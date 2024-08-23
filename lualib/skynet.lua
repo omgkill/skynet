@@ -370,9 +370,11 @@ local coroutine_pool = setmetatable({}, { __mode = "kv" })
 
 local function co_create(f)
 	local co = tremove(coroutine_pool)
-	if co == nil then
+	if co == nil then		-- 协程池中，再也找不到可以用的协程时，将重新创建一个
 		co = coroutine_create(function(...)
-			f(...)
+			f(...)		-- 执行回调函数，创建协程时，并不会立即执行，只有调用coroutine.resume时，才会执行内部逻辑，这行代码，只有在首次创建时会被调用
+			-- 回调函数执行完，协程本次调用的使命就完成了，但是为了实现复用，这里不能让协程退出，而是将
+			-- upvalue回调函数f赋值为空，再放入协程缓存池中，并且挂起，以便下次使用
 			while true do
 				local session = session_coroutine_id[co]
 				if session and session ~= 0 then
@@ -405,7 +407,7 @@ local function co_create(f)
 	else
 		-- pass the main function f to coroutine, and restore running thread
 		local running = running_thread
-		coroutine_resume(co, f)
+		coroutine_resume(co, f)  -- 唤醒第（1）处代码，并将新的回调函数，赋值给（1）处的upvalue f函数，此时在第（2）个yield处挂起
 		running_thread = running
 	end
 	return co
@@ -913,7 +915,7 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 			suspend(co, coroutine_resume(co, true, msg, sz, session))
 		end
 	else
-		local p = proto[prototype]
+		local p = proto[prototype]   -- 找到与消息类型对应的解析协议
 		if p == nil then
 			if prototype == skynet.PTYPE_TRACE then
 				-- trace next request
@@ -926,9 +928,9 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 			return
 		end
 
-		local f = p.dispatch
+		local f = p.dispatch   	-- 获取消息处理函数，可以视为该类协议的消息回调函数
 		if f then
-			local co = co_create(f)
+			local co = co_create(f)		-- 如果协程池内有空闲的协程，则直接返回，否则创建一个新的协程，该协程用于执行该类协议的消息处理函数dispatch
 			session_coroutine_id[co] = session
 			session_coroutine_address[co] = source
 			local traceflag = p.trace
@@ -948,7 +950,9 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 					skynet.trace()
 				end
 			end
-			suspend(co, coroutine_resume(co, session,source, p.unpack(msg,sz)))
+			-- 如果是创建后第一次使用这个coroutine，这里的coroutine.resume函数，将会唤醒该coroutine，并将第二个至最后一个参数，传给运行的函数
+			-- 如果是一个复用中的协程，那么这里的coroutine.resume会将第二个至最后一个参数，通过第（2）处的coroutine_yield返回给消息回调函数
+			suspend(co, coroutine_resume(co, session,source, p.unpack(msg,sz)))	-- 启动并执行协程，将结果返回给suspend
 		else
 			trace_source[source] = nil
 			if session ~= 0 then

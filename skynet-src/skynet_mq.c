@@ -19,6 +19,8 @@
 #define MQ_OVERLOAD 1024
 
 struct message_queue {
+    // 自旋锁，可能存在多个线程，向同一个队列写入的情况，加上自旋锁避免并发带来的发现，
+    //后面会讨论互斥锁，自旋锁，读写锁和条件变量的区别
 	struct spinlock lock;
 	uint32_t handle;
 	int cap;
