@@ -81,18 +81,21 @@ local function monitor_master(master_fd)
 	while true do
 		local ok, t, id_name, address = pcall(read_package,master_fd)
 		if ok then
+			-- 连接 ？？
 			if t == 'C' then
 				if connect_queue then
 					connect_queue[id_name] = address
 				else
 					connect_slave(id_name, address)
 				end
+			-- 新增节点 ？？
 			elseif t == 'N' then
 				globalname[id_name] = address
 				response_name(id_name)
 				if connect_queue == nil then
 					skynet.redirect(harbor_service, address, "harbor", 0, "N " .. id_name)
 				end
+			-- 删除
 			elseif t == 'D' then
 				local fd = slaves[id_name]
 				slaves[id_name] = false

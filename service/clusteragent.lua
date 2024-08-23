@@ -43,7 +43,11 @@ end
 new_register_name()
 
 local tracetag
-
+--- 第一个参数应该是是什么？ session
+--- 第二个参数应该是什么 source
+--- addr -> 目标service地址
+--- session -> 是什么呢,得看clustersender发的啥。 是序号
+--- is_push 应该是在C代码做的处理，增加的参数
 local function dispatch_request(_,_,addr, session, msg, sz, padding, is_push)
 	ignoreret()	-- session is fd, don't call skynet.ret
 	if session == nil then
@@ -51,6 +55,8 @@ local function dispatch_request(_,_,addr, session, msg, sz, padding, is_push)
 		tracetag = addr
 		return
 	end
+
+	-- 填充ing，说明这个请求还没有接收完成
 	if padding then
 		local req = large_request[session] or { addr = addr , is_push = is_push, tracetag = tracetag }
 		tracetag = nil
@@ -58,6 +64,8 @@ local function dispatch_request(_,_,addr, session, msg, sz, padding, is_push)
 		cluster.append(req, msg, sz)
 		return
 	else
+
+
 		local req = large_request[session]
 		if req then
 			tracetag = req.tracetag
@@ -67,6 +75,8 @@ local function dispatch_request(_,_,addr, session, msg, sz, padding, is_push)
 			addr = req.addr
 			is_push = req.is_push
 		end
+		-- 请求是空的？？？
+		-- 返回无效请求？？
 		if not msg then
 			tracetag = nil
 			local response = cluster.packresponse(session, false, "Invalid large req")
@@ -75,6 +85,8 @@ local function dispatch_request(_,_,addr, session, msg, sz, padding, is_push)
 		end
 	end
 	local ok, response
+
+	-- addr == 0 说明什么呢
 	if addr == 0 then
 		local name = skynet.unpack(msg, sz)
 		skynet.trash(msg, sz)
@@ -87,6 +99,8 @@ local function dispatch_request(_,_,addr, session, msg, sz, padding, is_push)
 			msg = "name not found"
 		end
 		sz = nil
+
+
 	else
 		if cluster.isname(addr) then
 			addr = register_name[addr]
@@ -108,6 +122,9 @@ local function dispatch_request(_,_,addr, session, msg, sz, padding, is_push)
 			msg = "Invalid name"
 		end
 	end
+
+
+	-- 这里就相当于返回了
 	if ok then
 		response = cluster.packresponse(session, true, msg, sz)
 		if type(response) == "table" then
@@ -124,16 +141,23 @@ local function dispatch_request(_,_,addr, session, msg, sz, padding, is_push)
 end
 
 skynet.start(function()
+
+	-- 接收从网关发过来的消息
 	skynet.register_protocol {
 		name = "client",
 		id = skynet.PTYPE_CLIENT,
 		unpack = cluster.unpackrequest,
 		dispatch = dispatch_request,
 	}
+
+
+
+	-- gate网关，
 	-- fd can write, but don't read fd, the data package will forward from gate though client protocol.
 	-- forward may fail, see https://github.com/cloudwu/skynet/issues/1958
 	pcall(skynet.call,gate, "lua", "forward", fd)
 
+	-- lua消息
 	skynet.dispatch("lua", function(_,source, cmd, ...)
 		if cmd == "exit" then
 			socket.close_fd(fd)

@@ -112,8 +112,10 @@ struct socket {
 	size_t dw_size;
 };
 
+// ctrl 是什么意思， 是控制？？
+
 struct socket_server {
-	volatile uint64_t time;
+	volatile uint64_t time; 
 	int reserve_fd;	// for EMFILE
 	int recvctrl_fd;
 	int sendctrl_fd;
@@ -133,6 +135,9 @@ struct socket_server {
 struct request_open {
 	int id;
 	int port;
+	// uintptr_t 是 unsigned __int64 ？？
+	// uintptr t是C++标准库中定义的一个无符号整数类型，它的作用是表示一个指针值。uintptr t类型可以存储任何类型的指针，并且
+	// 可以保证指针在不同平台和编译器之间的一致性。在C++中，uintptr t通常用于指针运算，如计算指针之间的距离、进行指针与整数的转换等。
 	uintptr_t opaque;
 	char host[1];
 };

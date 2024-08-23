@@ -3,6 +3,7 @@ local sc = require "skynet.socketchannel"
 local socket = require "skynet.socket"
 local cluster = require "skynet.cluster.core"
 
+---@type SocketChannel
 local channel
 local session = 1
 local node, nodename, init_host, init_port = ...
