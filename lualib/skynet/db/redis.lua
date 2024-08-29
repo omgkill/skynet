@@ -225,6 +225,7 @@ end
 function command:pipeline(ops,resp)
 	assert(ops and #ops > 0, "pipeline is null")
 
+	---@type SocketChannel
 	local fd = self[1]
 
 	local cmds = {}

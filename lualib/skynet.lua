@@ -372,7 +372,8 @@ local function co_create(f)
 	local co = tremove(coroutine_pool)
 	if co == nil then		-- 协程池中，再也找不到可以用的协程时，将重新创建一个
 		co = coroutine_create(function(...)
-			f(...)		-- 执行回调函数，创建协程时，并不会立即执行，只有调用coroutine.resume时，才会执行内部逻辑，这行代码，只有在首次创建时会被调用
+			-- 执行回调函数，创建协程时，并不会立即执行，只有调用coroutine.resume时，才会执行内部逻辑，这行代码，只有在首次创建时会被调用
+			f(...)
 			-- 回调函数执行完，协程本次调用的使命就完成了，但是为了实现复用，这里不能让协程退出，而是将
 			-- upvalue回调函数f赋值为空，再放入协程缓存池中，并且挂起，以便下次使用
 			while true do
@@ -740,6 +741,7 @@ function skynet.call(addr, typename, ...)
 end
 
 function skynet.rawcall(addr, typename, msg, sz)
+
 	local tag = session_coroutine_tracetag[running_thread]
 	if tag then
 		c.trace(tag, "call", 2)
@@ -900,8 +902,12 @@ end
 
 local trace_source = {}
 
+-- 这个raw是什么意思
+-- 本来的dispatch_message
+-- 这里的session，就是请求方地址
 local function raw_dispatch_message(prototype, msg, sz, session, source)
 	-- skynet.PTYPE_RESPONSE = 1, read skynet.h
+	-- prototype 为1，说明是返回
 	if prototype == 1 then
 		local co = session_id_coroutine[session]
 		if co == "BREAK" then
@@ -912,6 +918,8 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 			local tag = session_coroutine_tracetag[co]
 			if tag then c.trace(tag, "resume") end
 			session_id_coroutine[session] = nil
+
+			-- coroutine_resume 恢复等待消息的task
 			suspend(co, coroutine_resume(co, true, msg, sz, session))
 		end
 	else
@@ -921,8 +929,10 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 				-- trace next request
 				trace_source[source] = c.tostring(msg,sz)
 			elseif session ~= 0 then
+				-- 如果注册了error消息，就发送错误相关信息
 				c.send(source, skynet.PTYPE_ERROR, session, "")
 			else
+				-- 打log
 				unknown_request(session, source, msg, sz, prototype)
 			end
 			return
@@ -930,9 +940,12 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 
 		local f = p.dispatch   	-- 获取消息处理函数，可以视为该类协议的消息回调函数
 		if f then
-			local co = co_create(f)		-- 如果协程池内有空闲的协程，则直接返回，否则创建一个新的协程，该协程用于执行该类协议的消息处理函数dispatch
+			-- 如果协程池内有空闲的协程，则直接返回，否则创建一个新的协程，该协程用于执行该类协议的消息处理函数dispatch
+			local co = co_create(f)
 			session_coroutine_id[co] = session
 			session_coroutine_address[co] = source
+
+			----- trace 相关 start----------------
 			local traceflag = p.trace
 			if traceflag == false then
 				-- force off
@@ -950,6 +963,8 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 					skynet.trace()
 				end
 			end
+			----- trace 相关 end----------------
+
 			-- 如果是创建后第一次使用这个coroutine，这里的coroutine.resume函数，将会唤醒该coroutine，并将第二个至最后一个参数，传给运行的函数
 			-- 如果是一个复用中的协程，那么这里的coroutine.resume会将第二个至最后一个参数，通过第（2）处的coroutine_yield返回给消息回调函数
 			suspend(co, coroutine_resume(co, session,source, p.unpack(msg,sz)))	-- 启动并执行协程，将结果返回给suspend
@@ -966,6 +981,9 @@ end
 
 function skynet.dispatch_message(...)
 	local succ, err = pcall(raw_dispatch_message,...)
+
+
+	-- 这里处理fork function
 	while true do
 		if fork_queue.h > fork_queue.t then
 			-- queue is empty
@@ -979,7 +997,7 @@ function skynet.dispatch_message(...)
 		fork_queue[h] = nil
 		fork_queue.h = h + 1
 
-		local fork_succ, fork_err = pcall(suspend,co,coroutine_resume(co))
+		local fork_succ, fork_err = pcall(suspend, co, coroutine_resume(co))
 		if not fork_succ then
 			if succ then
 				succ = false

@@ -19,6 +19,8 @@ local socket_pool = setmetatable( -- store all socket object
 local socket_onclose = {}
 local socket_message = {}
 
+
+-- 这个s是什么
 local function wakeup(s)
 	local co = s.co
 	if co then
@@ -26,7 +28,7 @@ local function wakeup(s)
 		skynet.wakeup(co)
 	end
 end
-
+---@param s s
 local function pause_socket(s, size)
 	if s.pause ~= nil then
 		return
@@ -59,16 +61,18 @@ local function suspend(s)
 	end
 end
 
+-- 收到数据，然后欢迎对应协程
 -- read skynet_socket.h for these macro
 -- SKYNET_SOCKET_TYPE_DATA = 1
 socket_message[1] = function(id, size, data)
+	--- @type s
 	local s = socket_pool[id]
 	if s == nil then
 		skynet.error("socket: drop package from " .. id)
 		driver.drop(data, size)
 		return
 	end
-
+	-- todo 这个是什么
 	local sz = driver.push(s.buffer, s.pool, data, size)
 	local rr = s.read_required
 	local rrt = type(rr)
@@ -128,6 +132,7 @@ socket_message[3] = function(id)
 	else
 		driver.close(id)
 	end
+	-- 这相当于钩子
 	local cb = socket_onclose[id]
 	if cb then
 		cb(id)
@@ -212,6 +217,7 @@ local function connect(id, func)
 	if func == nil then
 		newbuffer = driver.buffer()
 	end
+	--- @class s
 	local s = {
 		id = id,
 		buffer = newbuffer,
@@ -441,7 +447,7 @@ function socket.limit(id, limit)
 end
 
 ---------------------- UDP
-
+-- cb 就是callback
 local function create_udp_object(id, cb)
 	assert(not socket_pool[id], "socket is not closed")
 	socket_pool[id] = {

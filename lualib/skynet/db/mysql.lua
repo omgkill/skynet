@@ -460,6 +460,7 @@ local function _recv_decode_packet_resp(self)
 end
 
 local function _mysql_login(self, user, password, charset, database, on_connect)
+    ---@param sockchannel SocketChannel
     return function(sockchannel)
         local dispatch_resp = _recv_decode_packet_resp(self)
         local packet = sockchannel:response(dispatch_resp)

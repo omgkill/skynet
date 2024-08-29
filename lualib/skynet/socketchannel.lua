@@ -5,6 +5,13 @@ local socketdriver = require "skynet.socketdriver"
 -- channel support auto reconnect , and capture socket error in request/response transaction
 -- { host = "", port = , auth = function(so) , response = function(so) session, data }
 
+-- TODO
+-- 1. 连续多次请求，如何处理
+
+
+-- 总结
+-- 1. 两种模式， 一种 预先设置接收数据方式。 另一种一次请求，设定这次接收数据的方式
+
 
 local socket_channel = {}
 ---@class SocketChannel
@@ -22,28 +29,32 @@ local channel_socket_meta = {
 	end
 }
 
-local socket_error = setmetatable({}, {__tostring = function() return "[Error: socket]" end })	-- alias for error object
+local socket_error = setmetatable({},
+		{__tostring = function() return "[Error: socket]" end })	-- alias for error object
 socket_channel.error = socket_error
 
 function socket_channel.channel(desc)
+	---@class _Channel
 	local c = {
 		__host = assert(desc.host),
 		__port = assert(desc.port),
 		__backup = desc.backup,
 		__auth = desc.auth,
-		__response = desc.response,	-- It's for session mode
+		__response = desc.response,	-- It's for session mode; （自定义）提供读取socket方式
 		__request = {},	-- request seq { response func or session }	-- It's for order mode
 		__thread = {}, -- coroutine seq or session->coroutine map
 		__result = {}, -- response result { coroutine -> result }
 		__result_data = {},
 		__connecting = {},
-		__sock = false,
-		__closed = false,
-		__authcoroutine = false,
+		__sock = false, -- 当socket关闭时，值是false； socket连接时，是 setmetatable( {fd} , self.__socket_meta )
+		__closed = false, -- 默认false，如果socket连接成功，设置true
+		__authcoroutine = false, -- 当socket连接，需要校验时，这个时当前校验协程
 		__nodelay = desc.nodelay,
 		__overload_notify = desc.overload,
 		__overload = false,
 		__socket_meta = channel_socket_meta,
+		__wait_response = nil, -- 等待回应的协程；用于 dispatch_by_order
+		__dispatch_thread = nil,  -- 这个是 fork协程
 	}
 	if desc.socket_read or desc.socket_readline then
 		c.__socket_meta = {
@@ -57,7 +68,7 @@ function socket_channel.channel(desc)
 
 	return setmetatable(c, channel_meta)
 end
-
+---@param self _Channel
 local function close_channel_socket(self)
 	if self.__sock then
 		local so = self.__sock
@@ -67,10 +78,15 @@ local function close_channel_socket(self)
 			self.__wait_response = nil
 		end
 		-- never raise error
+		-- so[1] 是fd
 		pcall(socket.close,so[1])
 	end
 end
 
+
+-- 这里有两个问题 1. __response 是什么   2. wakeup之后会发生什么，因为合理设置好几个参数
+-- 应该是服务器关闭，要关闭所有协程
+---@param self _Channel
 local function wakeup_all(self, errmsg)
 	if self.__response then
 		for k,co in pairs(self.__thread) do
@@ -94,15 +110,19 @@ local function wakeup_all(self, errmsg)
 		end
 	end
 end
-
+---@param self _Channel
 local function dispatch_by_session(self)
 	local response = self.__response
 	-- response() return session
 	while self.__sock do
+		-- 这里的session定义什么？？？
+		-- 看了下，是一个id，可以是自增的id。确保
 		local ok , session, result_ok, result_data, padding = pcall(response, self.__sock)
 		if ok and session then
+			-- 找到对应的协程
 			local co = self.__thread[session]
 			if co then
+				-- 如果有多个分包
 				if padding and result_ok then
 					-- If padding is true, append result_data to a table (self.__result_data[co])
 					local result = self.__result_data[co] or {}
@@ -140,6 +160,7 @@ local function pop_response(self)
 			return func, co
 		end
 		self.__wait_response = coroutine.running()
+		-- 如果这里唤醒，说明什么？？
 		skynet.wait(self.__wait_response)
 	end
 end
@@ -153,8 +174,8 @@ local function autoclose_cb(self, fd)
 		close_channel_socket(self)
 	end
 end
-
-local function push_response(self, response, co)
+---@param self _Channel
+local function 	push_response(self, response, co)
 	if self.__response then
 		-- response is session
 		self.__thread[response] = co
@@ -162,6 +183,7 @@ local function push_response(self, response, co)
 		-- response is a function, push it to __request
 		table.insert(self.__request, response)
 		table.insert(self.__thread, co)
+		-- 这个是什么意思呢？？？。 为啥直接唤醒上个请求的协程
 		if self.__wait_response then
 			skynet.wakeup(self.__wait_response)
 			self.__wait_response = nil
@@ -188,6 +210,9 @@ local function get_response(func, sock)
 	end
 end
 
+
+-- 流式取
+-- 异步发送多个request，等待返回
 local function dispatch_by_order(self)
 	while self.__sock do
 		local func, co = pop_response(self)
@@ -237,7 +262,7 @@ local function dispatch_function(self)
 		return dispatch_by_order
 	end
 end
-
+---@param self _Channel
 local function term_dispatch_thread(self)
 	if not self.__response and self.__dispatch_thread then
 		-- dispatch by order, send close signal to dispatch thread
@@ -245,7 +270,9 @@ local function term_dispatch_thread(self)
 	end
 end
 
+---@param self _Channel
 local function connect_once(self)
+	-- 已连接了，所以返回false
 	if self.__closed then
 		return false
 	end
@@ -281,11 +308,13 @@ local function connect_once(self)
 		end
 		return addr
 	end
-
+	---@param self _Channel
 	local function _connect_once(self, addr)
+		-- 开始连接
 		local fd,err = socket.open(addr.host, addr.port)
 		if not fd then
 			-- try next one
+			-- 继续尝试下一个
 			addr = _next_addr()
 			if addr == nil then
 				return false, err
@@ -305,7 +334,6 @@ local function connect_once(self)
 		end
 
 		-- register overload warning
-
 		local overload = self.__overload_notify
 		if overload then
 			local function overload_trigger(id, size)
@@ -336,6 +364,9 @@ local function connect_once(self)
 		end
 
 		self.__sock = setmetatable( {fd} , self.__socket_meta )
+
+		-- 发送消息之后，我们需要干什么呢？？？， 我们需要等待消息返回呀
+		-- 那这里是否是等待消息返回后的处理
 		self.__dispatch_thread = skynet.fork(function()
 			if self.__sock then
 				-- self.__sock can be false (socket closed) if error during connecting, See #1513
@@ -345,6 +376,7 @@ local function connect_once(self)
 			self.__dispatch_thread = nil
 		end)
 
+		-- redis 校验
 		if self.__auth then
 			self.__authcoroutine = coroutine.running()
 			local ok , message = pcall(self.__auth, self)
@@ -379,9 +411,10 @@ local function connect_once(self)
 	_add_backup()
 	return _connect_once(self, { host = self.__host, port = self.__port })
 end
-
+---@param self _Channel
 local function try_connect(self , once)
 	local t = 0
+	-- 未连接，才进入方法内
 	while not self.__closed do
 		local ok, err = connect_once(self)
 		if ok then
@@ -467,7 +500,7 @@ function channel:connect(once)
 	self.__closed = false
 	return block_connect(self, once)
 end
-
+---@param self _Channel
 local function wait_for_response(self, response)
 	local co = coroutine.running()
 	push_response(self, response, co)
