@@ -59,6 +59,7 @@ end
 
 local session_id_coroutine = {}
 local session_coroutine_id = {}
+-- 记录返回的地址， source address
 local session_coroutine_address = {}
 local session_coroutine_tracetag = {}
 local unresponse = {}
@@ -274,6 +275,7 @@ do ---- request/select
 		end
 	end
 
+	---@class request_meta
 	local request_meta = {}	; request_meta.__index = request_meta
 
 	function request_meta:add(obj)

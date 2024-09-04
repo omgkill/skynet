@@ -13,10 +13,10 @@
 #define MAX_MODULE_TYPE 32
 
 struct modules {
-	int count;
-	struct spinlock lock;
-	const char * path;
-	struct skynet_module m[MAX_MODULE_TYPE];
+	int count;				// modules的数量
+	struct spinlock lock;	// 自旋锁，避免多个线程同时向skynet_module写入数据，保证线程安全
+	const char * path;		// 由skynet配置表中的cpath指定，一般包含./cservice/?.so路径
+	struct skynet_module m[MAX_MODULE_TYPE]; // 存放服务模块的数组，最多32类
 };
 
 static struct modules * M = NULL;

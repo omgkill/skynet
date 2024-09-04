@@ -12,7 +12,12 @@ skynet.start(function()
 		local c = mc.new {
 			channel = channel ,
 			dispatch = function (channel, source, ...)
-				print(string.format("%s <=== %s %s",skynet.address(skynet.self()),skynet.address(source), channel), ...)
+				print(string.format(
+						"%s <=== %s %s",
+						skynet.address(skynet.self()),
+						skynet.address(source),
+						channel),
+				...)
 			end
 		}
 		print(skynet.address(skynet.self()), "sub", c)

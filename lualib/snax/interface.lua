@@ -16,6 +16,7 @@ local function dft_loader(path, name, G)
 	error(table.concat(errlist, "\n"))
 end
 
+-- return 一个函数
 return function (name , G, loader)
 	loader = loader or dft_loader
 

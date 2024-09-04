@@ -1,4 +1,6 @@
 local args = {}
+
+-- 参数
 for word in string.gmatch(..., "%S+") do
 	table.insert(args, word)
 end

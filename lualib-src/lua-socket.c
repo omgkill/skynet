@@ -41,6 +41,7 @@ struct socket_buffer {
 
 static int
 lfreepool(lua_State *L) {
+    // 结构
 	struct buffer_node * pool = lua_touserdata(L, 1);
 	int sz = lua_rawlen(L,1) / sizeof(*pool);
 	int i;

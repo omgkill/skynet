@@ -25,12 +25,14 @@ end
 local function list_srv(ti, fmt_func, ...)
 	local list = {}
 	local sessions = {}
+	---@type request_meta
 	local req = skynet.request()
 	for addr in pairs(services) do
 		local r = { addr, "debug", ... }
 		req:add(r)
 		sessions[r] = addr
 	end
+	--
 	for req, resp in req:select(ti) do
 		local addr = req[1]
 		if resp then
