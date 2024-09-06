@@ -88,7 +88,9 @@ context_dec() {
 
 uint32_t 
 skynet_current_handle(void) {
+	// 
 	if (G_NODE.init) {
+		// 
 		void * handle = pthread_getspecific(G_NODE.handle_key);
 		return (uint32_t)(uintptr_t)handle;
 	} else {
@@ -96,7 +98,7 @@ skynet_current_handle(void) {
 		return v;
 	}
 }
-
+// 转16进制？？
 static void
 id_to_hex(char * str, uint32_t id) {
 	int i;
@@ -227,12 +229,15 @@ skynet_context_release(struct skynet_context *ctx) {
 	return ctx;
 }
 
+// 
 int
 skynet_context_push(uint32_t handle, struct skynet_message *message) {
+	// 获取对方context
 	struct skynet_context * ctx = skynet_handle_grab(handle);
 	if (ctx == NULL) {
 		return -1;
 	}
+	// 
 	skynet_mq_push(ctx->queue, message);
 	skynet_context_release(ctx);
 
@@ -251,6 +256,7 @@ skynet_context_endless(uint32_t handle) {
 
 int 
 skynet_isremote(struct skynet_context * ctx, uint32_t handle, int * harbor) {
+
 	int ret = skynet_harbor_message_isremote(handle);
 	if (harbor) {
 		*harbor = (int)(handle >> HANDLE_REMOTE_SHIFT);
@@ -677,20 +683,27 @@ skynet_command(struct skynet_context * context, const char * cmd , const char * 
 	return NULL;
 }
 
+// 这个方法用处，还没有搞懂
 static void
 _filter_args(struct skynet_context * context, int type, int *session, void ** data, size_t * sz) {
+	//不是PTYPE_TAG_DONTCOPY
 	int needcopy = !(type & PTYPE_TAG_DONTCOPY);
+	//是PTYPE_TAG_ALLOCSESSION
 	int allocsession = type & PTYPE_TAG_ALLOCSESSION;
+	
+	// 这个是啥意思，自己是自己？？防止过大？
+	// 只取前8位
 	type &= 0xff;
-
+	// 
 	if (allocsession) {
 		assert(*session == 0);
 		*session = skynet_context_newsession(context);
 	}
-
+	// 
 	if (needcopy && *data) {
 		char * msg = skynet_malloc(*sz+1);
 		memcpy(msg, *data, *sz);
+		// 字符串？？
 		msg[*sz] = '\0';
 		*data = msg;
 	}
@@ -698,30 +711,51 @@ _filter_args(struct skynet_context * context, int type, int *session, void ** da
 	*sz |= (size_t)type << MESSAGE_TYPE_SHIFT;
 }
 
+// 发送
+// context -> ctx,
+// source -> 0,
+// destination -> (g->watchdog),
+// type -> (PTYPE_TEXT | PTYPE_TAG_DONTCOPY), 
+// session -> fd, 
+// data -> tmp, 
+// sz -> (size + n)
 int
-skynet_send(struct skynet_context * context, uint32_t source, uint32_t destination , int type, int session, void * data, size_t sz) {
+skynet_send(
+	struct skynet_context * context, 
+	uint32_t source, 
+	uint32_t destination , 
+	int type, 
+	int session, 
+	void * data, 
+	size_t sz
+	) 
+	{
 	if ((sz & MESSAGE_TYPE_MASK) != sz) {
+		// 超过了最大值
 		skynet_error(context, "The message to %x is too large", destination);
+		// 如果是1，为true？？？？
+		// 那就是type包含 PTYPE_TAG_DONTCOPY
 		if (type & PTYPE_TAG_DONTCOPY) {
 			skynet_free(data);
 		}
 		return -2;
 	}
+	// 有点难看懂，总之就是new session，copy data
 	_filter_args(context, type, &session, (void **)&data, &sz);
 
 	if (source == 0) {
 		source = context->handle;
 	}
-
+	// 
 	if (destination == 0) {
 		if (data) {
 			skynet_error(context, "Destination address can't be 0");
 			skynet_free(data);
 			return -1;
 		}
-
 		return session;
 	}
+	// harbor 是不是remote
 	if (skynet_harbor_message_isremote(destination)) {
 		struct remote_message * rmsg = skynet_malloc(sizeof(*rmsg));
 		rmsg->destination.handle = destination;
@@ -730,6 +764,7 @@ skynet_send(struct skynet_context * context, uint32_t source, uint32_t destinati
 		rmsg->type = sz >> MESSAGE_TYPE_SHIFT;
 		skynet_harbor_send(rmsg, source, session);
 	} else {
+		// 这就算声明了？？
 		struct skynet_message smsg;
 		smsg.source = source;
 		smsg.session = session;
@@ -746,13 +781,17 @@ skynet_send(struct skynet_context * context, uint32_t source, uint32_t destinati
 
 int
 skynet_sendname(struct skynet_context * context, uint32_t source, const char * addr , int type, int session, void * data, size_t sz) {
+	// contest -> handle 为什么名字是handle呢？？
 	if (source == 0) {
 		source = context->handle;
 	}
+	// 
 	uint32_t des = 0;
 	if (addr[0] == ':') {
+		// :开始的是绝对地址
 		des = strtoul(addr+1, NULL, 16);
 	} else if (addr[0] == '.') {
+		// .开始的是别名，此处要去找名字对应地址
 		des = skynet_handle_findname(addr + 1);
 		if (des == 0) {
 			if (type & PTYPE_TAG_DONTCOPY) {
@@ -761,6 +800,9 @@ skynet_sendname(struct skynet_context * context, uint32_t source, const char * a
 			return -1;
 		}
 	} else {
+		// 发送给 harbor
+
+		// 值太大了
 		if ((sz & MESSAGE_TYPE_MASK) != sz) {
 			skynet_error(context, "The message to %s is too large", addr);
 			if (type & PTYPE_TAG_DONTCOPY) {
@@ -768,9 +810,12 @@ skynet_sendname(struct skynet_context * context, uint32_t source, const char * a
 			}
 			return -2;
 		}
+		// 
 		_filter_args(context, type, &session, (void **)&data, &sz);
 
+		//分配内存
 		struct remote_message * rmsg = skynet_malloc(sizeof(*rmsg));
+
 		copy_name(rmsg->destination.name, addr);
 		rmsg->destination.handle = 0;
 		rmsg->message = data;

@@ -165,6 +165,10 @@ _report(struct gate * g, const char * data, ...) {
 	skynet_send(ctx, 0, g->watchdog, PTYPE_TEXT,  0, tmp, n);
 }
 
+
+// @param * g  是gate
+// @param * c  是connect
+// @param size 是字节流长度
 static void
 _forward(struct gate *g, struct connection * c, int size) {
 	struct skynet_context * ctx = g->ctx;
@@ -173,19 +177,28 @@ _forward(struct gate *g, struct connection * c, int size) {
 		// socket error
 		return;
 	}
+	// 这里的三种模式，对应 https://blog.codingnow.com/2012/09/the_design_of_skynet.html#Gate 和 Connection
+	// broker是什么意思？好像在哪看到过
 	if (g->broker) {
+		// 分配空间
 		void * temp = skynet_malloc(size);
+		// 这个就是读数据了，把数据读取到temp里
 		databuffer_read(&c->buffer,&g->mp,(char *)temp, size);
+		// 发送到对应service里
 		skynet_send(ctx, 0, g->broker, g->client_tag | PTYPE_TAG_DONTCOPY, fd, temp, size);
 		return;
 	}
+	// 这个是什么模式
 	if (c->agent) {
 		void * temp = skynet_malloc(size);
 		databuffer_read(&c->buffer,&g->mp,(char *)temp, size);
 		skynet_send(ctx, c->client, c->agent, g->client_tag | PTYPE_TAG_DONTCOPY, fd , temp, size);
 	} else if (g->watchdog) {
+		// 加包头
 		char * tmp = skynet_malloc(size + 32);
+		// 
 		int n = snprintf(tmp,32,"%d data ",c->id);
+		// 数据放到tmp + n 之后
 		databuffer_read(&c->buffer,&g->mp,tmp+n,size);
 		skynet_send(ctx, 0, g->watchdog, PTYPE_TEXT | PTYPE_TAG_DONTCOPY, fd, tmp, size + n);
 	}
@@ -193,8 +206,11 @@ _forward(struct gate *g, struct connection * c, int size) {
 
 static void
 dispatch_message(struct gate *g, struct connection *c, int id, void * data, int sz) {
+	// 先push数据？？？
+	// 为什么要这样处理呢？？
 	databuffer_push(&c->buffer,&g->mp, data, sz);
 	for (;;) {
+		//  读取长度
 		int size = databuffer_readheader(&c->buffer, &g->mp, g->header_size);
 		if (size < 0) {
 			return;
@@ -206,6 +222,7 @@ dispatch_message(struct gate *g, struct connection *c, int id, void * data, int 
 				skynet_error(ctx, "Recv socket message > 16M");
 				return;
 			} else {
+
 				_forward(g, c, size);
 				databuffer_reset(&c->buffer);
 			}

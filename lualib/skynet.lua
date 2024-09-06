@@ -640,7 +640,7 @@ local starttime
 
 function skynet.starttime()
 	if not starttime then
-		starttime = c.intcommand("STARTTIME")
+		starttime = c.("STARTTIME")
 	end
 	return starttime
 end

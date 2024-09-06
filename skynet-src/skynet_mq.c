@@ -62,7 +62,7 @@ skynet_globalmq_pop() {
 	struct global_queue *q = Q;
 
 	SPIN_LOCK(q)
-	struct message_queue *mq = q->head;
+	struct message_queue *mq  = q->head;
 	if(mq) {
 		q->head = mq->next;
 		if(q->head == NULL) {

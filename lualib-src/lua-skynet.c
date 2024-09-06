@@ -50,12 +50,25 @@ struct callback_context {
 	lua_State *L;
 };
 
+// 这个方法是什么
 static int
-_cb(struct skynet_context * context, void * ud, int type, int session, uint32_t source, const void * msg, size_t sz) {
+_cb(
+	struct skynet_context * context, 
+	void * ud, 
+	int type, 
+	int session, 
+	uint32_t source, 
+	const void * msg, 
+	size_t sz
+) {
+	// 回调上下文
 	struct callback_context *cb_ctx = (struct callback_context *)ud;
 	lua_State *L = cb_ctx->L;
+	// 
 	int trace = 1;
+	// 
 	int r;
+	// 
 	lua_pushvalue(L,2);
 
 	lua_pushinteger(L, type);
@@ -64,12 +77,14 @@ _cb(struct skynet_context * context, void * ud, int type, int session, uint32_t 
 	lua_pushinteger(L, session);
 	lua_pushinteger(L, source);
 
+	// 调用方法，5个入参，0个返回参数， trace： 如果是 0 ， 返回在栈顶的错误消息就和原始错误消息完全一致。 否则， msgh 就被当成是 错误处理函数 在栈上的索引位置
 	r = lua_pcall(L, 5, 0 , trace);
 
 	if (r == LUA_OK) {
 		return 0;
 	}
 	const char * self = skynet_command(context, "REG", NULL);
+	// 各种报错
 	switch (r) {
 	case LUA_ERRRUN:
 		skynet_error(context, "lua call [%x to %s : %d msgsz = %d] error : " KRED "%s" KNRM, source , self, session, sz, lua_tostring(L,-1));
@@ -82,51 +97,76 @@ _cb(struct skynet_context * context, void * ud, int type, int session, uint32_t 
 		break;
 	};
 
+	// 获取返回值
 	lua_pop(L,1);
 
 	return 0;
 }
 
+// 这人方法的作用是什么
 static int
 forward_cb(struct skynet_context * context, void * ud, int type, int session, uint32_t source, const void * msg, size_t sz) {
+	// 应该是适配转换
 	_cb(context, ud, type, session, source, msg, sz);
 	// don't delete msg in forward mode.
 	return 1;
 }
-
+// 
 static void
 clear_last_context(lua_State *L) {
+	// 把table["callback_context"]的值压栈
 	if (lua_getfield(L, LUA_REGISTRYINDEX, "callback_context") == LUA_TUSERDATA) {
+		// 将空值压栈
 		lua_pushnil(L);
+		// 替换索引(-2 )值
 		lua_setiuservalue(L, -2, 2);
 	}
+	// 弹出栈底元素
 	lua_pop(L, 1);
 }
 
 static int
-_cb_pre(struct skynet_context * context, void * ud, int type, int session, uint32_t source, const void * msg, size_t sz) {
+_cb_pre(
+		struct skynet_context * context, 
+		void * ud, 
+		int type, 
+		int session, 
+		uint32_t source, 
+		const void * msg, 
+		size_t sz
+	) {
 	struct callback_context *cb_ctx = (struct callback_context *)ud;
 	clear_last_context(cb_ctx->L);
 	skynet_callback(context, ud, _cb);
 	return _cb(context, cb_ctx, type, session, source, msg, sz);
 }
 
+// 这个和_cb_pre有什么区别呢
+// 
 static int
 _forward_pre(struct skynet_context *context, void *ud, int type, int session, uint32_t source, const void *msg, size_t sz) {
+	// 回调 context
 	struct callback_context *cb_ctx = (struct callback_context *)ud;
+	// 清理回调context的堆栈
 	clear_last_context(cb_ctx->L);
+	// 
 	skynet_callback(context, ud, forward_cb);
 	return forward_cb(context, cb_ctx, type, session, source, msg, sz);
 }
 
+// 
 static int
 lcallback(lua_State *L) {
 	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
 	int forward = lua_toboolean(L, 2);
 	luaL_checktype(L,1,LUA_TFUNCTION);
+	// 保留index为1的元素，其他的都删除
 	lua_settop(L,1);
+	// 创建新的userdata?? 为什么这个原始lua_state 栈
 	struct callback_context * cb_ctx = (struct callback_context *)lua_newuserdatauv(L, sizeof(*cb_ctx), 2);
+	// 返回newthread 的 堆栈L
 	cb_ctx->L = lua_newthread(L);
+	// 放进入traceback
 	lua_pushcfunction(cb_ctx->L, traceback);
 	lua_setiuservalue(L, -2, 1);
 	lua_getfield(L, LUA_REGISTRYINDEX, "callback_context");
@@ -190,11 +230,15 @@ laddresscommand(lua_State *L) {
 
 static int
 lintcommand(lua_State *L) {
+	// lua_upvalueindex -> 返回当前运行的函数（参见 §4.4）的第 i 个上值的伪索引。
+	// lua_touserdata 如果给定索引处的值是一个完全用户数据， 函数返回其内存块的地址。 如果值是一个轻量用户数据， 那么就返回它表示的指针。 否则，返回 NULL 。
 	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
+	// 检查
 	const char * cmd = luaL_checkstring(L,1);
 	const char * result;
 	const char * parm = NULL;
 	char tmp[64];	// for integer parm
+	// 参数个数，或者说栈顶序号
 	if (lua_gettop(L) == 2) {
 		if (lua_isnumber(L, 2)) {
 			int32_t n = (int32_t)luaL_checkinteger(L,2);
@@ -328,6 +372,7 @@ lsend(lua_State *L) {
 	 lightuserdata message_ptr
 	 integer len
  */
+// redirect 相当于，可以自定义设置source。可以设置成其他service的地址
 static int
 lredirect(lua_State *L) {
 	uint32_t source = (uint32_t)luaL_checkinteger(L,2);
@@ -345,6 +390,7 @@ lerror(lua_State *L) {
 		return 0;
 	}
 	luaL_Buffer b;
+	//初始化缓存 B
 	luaL_buffinit(L, &b);
 	int i;
 	for (i=1; i<=n; i++) {
@@ -373,6 +419,7 @@ ltostring(lua_State *L) {
 static int
 lharbor(lua_State *L) {
 	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
+	// 获取index为1的值
 	uint32_t handle = (uint32_t)luaL_checkinteger(L,1);
 	int harbor = 0;
 	int remote = skynet_isremote(context, handle, &harbor);
@@ -443,21 +490,30 @@ ltrace(lua_State *L) {
 	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
 	const char * tag = luaL_checkstring(L, 1);
 	const char * user = luaL_checkstring(L, 2);
+	// lua_is none or nil 
 	if (!lua_isnoneornil(L, 3)) {
 		lua_State * co = L;
 		int level;
+		// 是不是线程
 		if (lua_isthread(L, 3)) {
+			// 获取thread
 			co = lua_tothread (L, 3);
+			// 获取等级
+			// 第三个参数意思是：获取到的值不存在或是 nil， 返回 第三个参数
 			level = luaL_optinteger(L, 4, 1);
 		} else {
+			// 获取等级
 			level = luaL_optinteger(L, 3, 1);
 		}
+		// 数组？？
 		struct source_info si[MAX_LEVEL];
 		lua_Debug d;
 		int index = 0;
 		do {
+			// 这个是干啥
 			if (!lua_getstack(co, level, &d))
 				break;
+			// 
 			lua_getinfo(co, "Sl", &d);
 			level++;
 			si[index].source = d.source;
@@ -465,6 +521,8 @@ ltrace(lua_State *L) {
 			if (d.currentline >= 0)
 				++index;
 		} while (index < MAX_LEVEL);
+
+
 		switch (index) {
 		case 1:
 			skynet_error(context, "<TRACE %s> %" PRId64 " %s : %s:%d", tag, get_time(), user, si[0].source, si[0].line);
@@ -495,7 +553,7 @@ ltrace(lua_State *L) {
 LUAMOD_API int
 luaopen_skynet_core(lua_State *L) {
 	luaL_checkversion(L);
-
+	// 
 	luaL_Reg l[] = {
 		{ "send" , lsend },
 		{ "genid", lgenid },
