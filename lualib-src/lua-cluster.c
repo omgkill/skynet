@@ -28,16 +28,13 @@ fill_uint32(uint8_t * buf, uint32_t n) {
 	buf[0] = n & 0xff;
 	buf[1] = (n >> 8) & 0xff;
 	buf[2] = (n >> 16) & 0xff;
-	// 24 + 8. 也就是n最大就是 2^32 - 1
 	buf[3] = (n >> 24) & 0xff;
 }
-// 填充header
+
 static void
 fill_header(lua_State *L, uint8_t *buf, int sz) {
 	assert(sz < 0x10000);
-	// 高于8位的
 	buf[0] = (sz >> 8) & 0xff;
-	// 低8位
 	buf[1] = sz & 0xff;
 }
 
@@ -86,32 +83,19 @@ fill_header(lua_State *L, uint8_t *buf, int sz) {
  */
 static int
 packreq_number(lua_State *L, int session, void * msg, uint32_t sz, int is_push) {
-	// 地址
 	uint32_t addr = (uint32_t)lua_tointeger(L,1);
-	// 8200 长度
 	uint8_t buf[TEMP_LENGTH];
-	// 8000 长度
 	if (sz < MULTI_PART) {
-		// 前两位是长度
 		fill_header(L, buf, sz+9);
-		// 单包
 		buf[2] = 0;
-		// fill 地址
 		fill_uint32(buf+3, addr);
-		// fill session
 		fill_uint32(buf+7, is_push ? 0 : (uint32_t)session);
-		// memory_copy, 应该是把 msg copy 到buf里
 		memcpy(buf+11,msg,sz);
-		//const char *lua_pushlstring (lua_State *L, const char *s, size_t len);
-		//把指针 s 指向的长度为 len 的字符串压栈。 Lua 对这个字符串做一个内部副本（或是复用一个副本）， 
-		// 因此 s 处的内存在函数返回后，可以释放掉或是立刻重用于其它用途。 字符串内可以是任意二进制数据，包括零字符。
-		//返回内部副本的指针。
+
 		lua_pushlstring(L, (const char *)buf, sz+11);
 		return 0;
 	} else {
-		// 分包数量
 		int part = (sz - 1) / MULTI_PART + 1;
-		// 大端大小
 		fill_header(L, buf, 13);
 		buf[2] = is_push ? 0x41 : 1;	// multi push or request
 		fill_uint32(buf+3, addr);
@@ -125,9 +109,7 @@ packreq_number(lua_State *L, int session, void * msg, uint32_t sz, int is_push) 
 static int
 packreq_string(lua_State *L, int session, void * msg, uint32_t sz, int is_push) {
 	size_t namelen = 0;
-	// 取出数据，并把长度赋值namelen
 	const char *name = lua_tolstring(L, 1, &namelen);
-	// 
 	if (name == NULL || namelen < 1 || namelen > 255) {
 		skynet_free(msg);
 		if (name == NULL) {
@@ -161,58 +143,45 @@ packreq_string(lua_State *L, int session, void * msg, uint32_t sz, int is_push) 
 		return part;
 	}
 }
-// 
+
 static void
 packreq_multi(lua_State *L, int session, void * msg, uint32_t sz) {
 	uint8_t buf[TEMP_LENGTH];
-	// 包数量
 	int part = (sz - 1) / MULTI_PART + 1;
 	int i;
-	// 指针
 	char *ptr = msg;
-	
 	for (i=0;i<part;i++) {
 		uint32_t s;
-		// 如果大于最大包限制
 		if (sz > MULTI_PART) {
 			s = MULTI_PART;
-			// 2:multipart, 3:multipart end
 			buf[2] = 2;
 		} else {
 			s = sz;
 			buf[2] = 3;	// the last multi part
 		}
-		// 5是包头，不包含header的两位长度。和不包含消息的其他信息。 比如是否是多包、session
 		fill_header(L, buf, s+5);
-		// 3 -> 6 是session
 		fill_uint32(buf+3, (uint32_t)session);
-		// 内存复制
 		memcpy(buf+7, ptr, s);
 		lua_pushlstring(L, (const char *)buf, s+7);
-		// void lua_rawseti (lua_State *L, int index, lua_Integer i);
-		//等价于 t[i] = v ， 这里的 t 是指给定索引处的表， 而 v 是栈顶的值
-		//这个函数会将值弹出栈。 赋值是直接的；即不会触发元方法。
 		lua_rawseti(L, -2, i+1);
 		sz -= s;
 		ptr += s;
 	}
 }
 
+// l -> addr, session, msg, sz
 static int
 packrequest(lua_State *L, int is_push) {
 	void *msg = lua_touserdata(L,3);
 	if (msg == NULL) {
 		return luaL_error(L, "Invalid request message");
 	}
-	// 大小
 	uint32_t sz = (uint32_t)luaL_checkinteger(L,4);
-	// session
 	int session = luaL_checkinteger(L,2);
 	if (session <= 0) {
 		skynet_free(msg);
 		return luaL_error(L, "Invalid request session %d", session);
 	}
-	// 地址类型
 	int addr_type = lua_type(L,1);
 	int multipak;
 	if (addr_type == LUA_TNUMBER) {
@@ -220,14 +189,11 @@ packrequest(lua_State *L, int is_push) {
 	} else {
 		multipak = packreq_string(L, session, msg, sz, is_push);
 	}
-	// 相当于消息序号
 	uint32_t new_session = (uint32_t)session + 1;
 	if (new_session > INT32_MAX) {
 		new_session = 1;
 	}
 	lua_pushinteger(L, new_session);
-	// 如果是单包，直接就就放进去了
-	// 如果是多包，需要单独拉出来处理
 	if (multipak) {
 		lua_createtable(L, multipak, 0);
 		packreq_multi(L, session, msg, sz);
@@ -235,11 +201,11 @@ packrequest(lua_State *L, int is_push) {
 		return 3;
 	} else {
 		skynet_free(msg);
+		// 两个参数
 		return 2;
 	}
 }
 
-// 与下面区分就是，是否是推送。 0:否；1:是
 static int
 lpackrequest(lua_State *L) {
 	return packrequest(L, 0);
@@ -253,17 +219,13 @@ lpackpush(lua_State *L) {
 static int
 lpacktrace(lua_State *L) {
 	size_t sz;
-	// 获取tag
 	const char * tag = luaL_checklstring(L, 1, &sz);
 	if (sz > 0x8000) {
 		return luaL_error(L, "trace tag is too long : %d", (int) sz);
 	}
 	uint8_t buf[TEMP_LENGTH];
-	// 消息类型。 第4中， 是tag消息
 	buf[2] = 4;
-	// 长度
 	fill_header(L, buf, sz+1);
-	// 数据copy	
 	memcpy(buf+3, tag, sz);
 	lua_pushlstring(L, (const char *)buf, sz+3);
 	return 1;
@@ -279,24 +241,20 @@ lpacktrace(lua_State *L) {
 		boolean padding
 		boolean is_push
  */
-// 获取session
+
 static inline uint32_t
 unpack_uint32(const uint8_t * buf) {
 	return buf[0] | buf[1]<<8 | buf[2]<<16 | buf[3]<<24;
 }
-// 
+
 static void
 return_buffer(lua_State *L, const char * buffer, int sz) {
-	// 分配内存
 	void * ptr = skynet_malloc(sz);
-	// copy
 	memcpy(ptr, buffer, sz);
-	// 放入索引
 	lua_pushlightuserdata(L, ptr);
-	// 放入大小
 	lua_pushinteger(L, sz);
 }
-// 解包 长度
+
 static int
 unpackreq_number(lua_State *L, const uint8_t * buf, int sz) {
 	if (sz < 9) {
@@ -602,17 +560,23 @@ lappend(lua_State *L) {
 
 static int
 lconcat(lua_State *L) {
+	// 是否是table
 	if (!lua_istable(L,1))
 		return 0;
+	// 获取table[1] 值是否为number
 	if (lua_geti(L,1,1) != LUA_TNUMBER)
 		return 0;
+	// 获取栈顶字段
 	int sz = lua_tointeger(L,-1);
 	lua_pop(L,1);
+	// 分配内存
 	char * buff = skynet_malloc(sz);
 	int idx = 2;
 	int offset = 0;
+	// 如果是table里的值是string
 	while(lua_geti(L,1,idx) == LUA_TSTRING) {
 		size_t s;
+		// 获取栈顶的
 		const char * str = lua_tolstring(L, -1, &s);
 		if (s+offset > sz) {
 			skynet_free(buff);
@@ -675,7 +639,9 @@ luaopen_skynet_cluster_core(lua_State *L) {
 		{ "nodename", lnodename },
 		{ NULL, NULL },
 	};
+	//检查调用它的内核是否是创建这个 Lua 状态机的内核。 以及调用它的代码是否使用了相同的 Lua 版本。 同时也检查调用它的内核与创建该 Lua 状态机的内核 是否使用了同一片地址空间。
 	luaL_checkversion(L);
+	// 创建一张新的表，并把列表 l 中的函数注册进去
 	luaL_newlib(L,l);
 
 	return 1;
