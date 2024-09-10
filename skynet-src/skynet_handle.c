@@ -206,36 +206,47 @@ skynet_handle_findname(const char * name) {
 	return handle;
 }
 
+// name 中间插入
 static void
 _insert_name_before(struct handle_storage *s, char *name, uint32_t handle, int before) {
+	// 判断容量是否足够
 	if (s->name_count >= s->name_cap) {
+		// 扩容？
 		s->name_cap *= 2;
 		assert(s->name_cap <= MAX_SLOT_SIZE);
+		// 分配内存
 		struct handle_name * n = skynet_malloc(s->name_cap * sizeof(struct handle_name));
 		int i;
+		// 迁移
 		for (i=0;i<before;i++) {
 			n[i] = s->name[i];
 		}
+		// 预留一位，并迁移后续的
 		for (i=before;i<s->name_count;i++) {
 			n[i+1] = s->name[i];
 		}
+		// 释放之前的
 		skynet_free(s->name);
 		s->name = n;
 	} else {
 		int i;
+		后移
 		for (i=s->name_count;i>before;i--) {
 			s->name[i] = s->name[i-1];
 		}
 	}
+
 	s->name[before].name = name;
 	s->name[before].handle = handle;
 	s->name_count ++;
 }
 
+// 尾部插入
 static const char *
 _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 	int begin = 0;
 	int end = s->name_count - 1;
+	// 判断是否已有
 	while (begin<=end) {
 		int mid = (begin+end)/2;
 		struct handle_name *n = &s->name[mid];
@@ -249,6 +260,7 @@ _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 			end = mid - 1;
 		}
 	}
+	// 
 	char * result = skynet_strdup(name);
 
 	_insert_name_before(s, result, handle, begin);
@@ -270,11 +282,15 @@ skynet_handle_namehandle(uint32_t handle, const char *name) {
 void 
 skynet_handle_init(int harbor) {
 	assert(H==NULL);
+	// 分配内存
 	struct handle_storage * s = skynet_malloc(sizeof(*H));
+	// 初始大小
 	s->slot_size = DEFAULT_SLOT_SIZE;
+	// 分配内存
 	s->slot = skynet_malloc(s->slot_size * sizeof(struct skynet_context *));
+	// 初始化
 	memset(s->slot, 0, s->slot_size * sizeof(struct skynet_context *));
-
+	// 初始化锁
 	rwlock_init(&s->lock);
 	// reserve 0 for system
 	s->harbor = (uint32_t) (harbor & 0xff) << HANDLE_REMOTE_SHIFT;

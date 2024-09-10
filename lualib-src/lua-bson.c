@@ -69,25 +69,31 @@ bson_destroy(struct bson *b) {
 	}
 }
 
+// 创建json，应该是分配好内存，然后初始化
 static inline void
 bson_create(struct bson *b) {
 	b->size = 0;
+	//  默认64
 	b->cap = DEFAULT_CAP;
 	b->ptr = b->buffer;
 }
 
 static inline void
 bson_reserve(struct bson *b, int sz) {
+	// 小于容量
 	if (b->size + sz <= b->cap)
 		return;
+	// 直到 cap > (b->size + sz)
 	do {
 		b->cap *= 2;
 	} while (b->cap <= b->size + sz);
-
+	// 如果两个相等说明什么？？
 	if (b->ptr == b->buffer) {
+		// 分配对应容量，然后copy
 		b->ptr = (uint8_t*)malloc(b->cap);
 		memcpy(b->ptr, b->buffer, b->size);
 	} else {
+		// 重新分配
 		b->ptr = (uint8_t*)realloc(b->ptr, b->cap);
 	}
 }

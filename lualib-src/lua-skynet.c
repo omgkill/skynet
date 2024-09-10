@@ -286,26 +286,33 @@ get_dest_string(lua_State *L, int index) {
 	return dest_string;
 }
 
+// 发送消息
+// 如果是send， source->0， idx_type->2
 static int
 send_message(lua_State *L, int source, int idx_type) {
+	// 获取当前service的skynet_context
 	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
+	// 目标地址
 	uint32_t dest = (uint32_t)lua_tointeger(L, 1);
 	const char * dest_string = NULL;
 	if (dest == 0) {
 		if (lua_type(L,1) == LUA_TNUMBER) {
 			return luaL_error(L, "Invalid service address 0");
 		}
+		// 目标地址是key
 		dest_string = get_dest_string(L, 1);
 	}
-
+	// 类型是 ”PTYPE_LUA“
 	int type = luaL_checkinteger(L, idx_type+0);
 	int session = 0;
+	// type后面的参数判断
 	if (lua_isnil(L,idx_type+1)) {
 		type |= PTYPE_TAG_ALLOCSESSION;
 	} else {
+		// 确实是session
 		session = luaL_checkinteger(L,idx_type+1);
 	}
-
+	// 消息类型
 	int mtype = lua_type(L,idx_type+2);
 	switch (mtype) {
 	case LUA_TSTRING: {

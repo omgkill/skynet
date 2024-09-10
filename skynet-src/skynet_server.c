@@ -113,27 +113,32 @@ id_to_hex(char * str, uint32_t id) {
 struct drop_t {
 	uint32_t handle;
 };
-
+// 
 static void
 drop_message(struct skynet_message *msg, void *ud) {
+	// 为什么要用结构
 	struct drop_t *d = ud;
+	// 释放空间
 	skynet_free(msg->data);
+	// 获取地址
 	uint32_t source = d->handle;
 	assert(source);
 	// report error to the message source
 	skynet_send(NULL, source, msg->source, PTYPE_ERROR, msg->session, NULL, 0);
 }
-
+// new skynet_context ？？
 struct skynet_context * 
 skynet_context_new(const char * name, const char *param) {
+	// 只需要知道这里获取skynet_module
 	struct skynet_module * mod = skynet_module_query(name);
 
 	if (mod == NULL)
 		return NULL;
-
+	// create instance
 	void *inst = skynet_module_instance_create(mod);
 	if (inst == NULL)
 		return NULL;
+	// 分配内存
 	struct skynet_context * ctx = skynet_malloc(sizeof(*ctx));
 	CHECKCALLING_INIT(ctx)
 
@@ -153,20 +158,27 @@ skynet_context_new(const char * name, const char *param) {
 	ctx->message_count = 0;
 	ctx->profile = G_NODE.profile;
 	// Should set to 0 first to avoid skynet_handle_retireall get an uninitialized handle
-	ctx->handle = 0;	
+	ctx->handle = 0;
+	// 	
 	ctx->handle = skynet_handle_register(ctx);
+	// 
 	struct message_queue * queue = ctx->queue = skynet_mq_create(ctx->handle);
 	// init function maybe use ctx->handle, so it must init at last
 	context_inc();
 
 	CHECKCALLING_BEGIN(ctx)
+	// init
 	int r = skynet_module_instance_init(mod, inst, ctx, param);
 	CHECKCALLING_END(ctx)
+
 	if (r == 0) {
+		// 释放？？？
+		// 应该是判断是否被释放了
 		struct skynet_context * ret = skynet_context_release(ctx);
 		if (ret) {
 			ctx->init = true;
 		}
+		// push global mq
 		skynet_globalmq_push(queue);
 		if (ret) {
 			skynet_error(ret, "LAUNCH %s %s", name, param ? param : "");
@@ -182,7 +194,7 @@ skynet_context_new(const char * name, const char *param) {
 		return NULL;
 	}
 }
-
+// 
 int
 skynet_context_newsession(struct skynet_context *ctx) {
 	// session always be a positive number
@@ -213,6 +225,7 @@ delete_context(struct skynet_context *ctx) {
 	if (f) {
 		fclose(f);
 	}
+	// module 释放
 	skynet_module_instance_release(ctx->mod, ctx->instance);
 	skynet_mq_mark_release(ctx->queue);
 	CHECKCALLING_DESTROY(ctx)
@@ -243,7 +256,7 @@ skynet_context_push(uint32_t handle, struct skynet_message *message) {
 
 	return 0;
 }
-
+// 是否死循环？？
 void 
 skynet_context_endless(uint32_t handle) {
 	struct skynet_context * ctx = skynet_handle_grab(handle);
@@ -258,6 +271,7 @@ int
 skynet_isremote(struct skynet_context * ctx, uint32_t handle, int * harbor) {
 
 	int ret = skynet_harbor_message_isremote(handle);
+	// 通过高位判断
 	if (harbor) {
 		*harbor = (int)(handle >> HANDLE_REMOTE_SHIFT);
 	}
@@ -308,7 +322,7 @@ skynet_context_message_dispatch(struct skynet_monitor *sm, struct message_queue 
 		if (q==NULL)
 			return NULL;
 	}
-
+	// 
 	uint32_t handle = skynet_mq_handle(q);
 
 	struct skynet_context * ctx = skynet_handle_grab(handle);
@@ -553,7 +567,7 @@ cmd_monitor(struct skynet_context * context, const char * param) {
 	} else {
 		handle = tohandle(context, param);
 	}
-	G_NODE.monitor_exit = handle;
+	_NODE.monitor_exit = handle;
 	return NULL;
 }
 

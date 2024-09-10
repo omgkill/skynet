@@ -31,6 +31,8 @@ local function toBinary(n)
 end
 
 
-print(toBinary(0xf))
+print(toBinary(0x7fffffff))
 
 print(0xf)
+
+1111111111111111111111111111111
