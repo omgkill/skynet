@@ -84,6 +84,7 @@ fill_header(lua_State *L, uint8_t *buf, int sz) {
 static int
 packreq_number(lua_State *L, int session, void * msg, uint32_t sz, int is_push) {
 	uint32_t addr = (uint32_t)lua_tointeger(L,1);
+	//  uint8_t: 占用1个字节，这是最基本的类型，适用于存储单个8位无符号整数
 	uint8_t buf[TEMP_LENGTH];
 	if (sz < MULTI_PART) {
 		fill_header(L, buf, sz+9);
@@ -357,14 +358,19 @@ unpackmreq_string(lua_State *L, const uint8_t * buf, int sz, int is_push) {
 	return 6;
 }
 
+// 数据已经是处理过的数据了
+// L -> msg, sz
 static int
 lunpackrequest(lua_State *L) {
 	int sz;
 	const char *msg;
 	if (lua_type(L, 1) == LUA_TLIGHTUSERDATA) {
 		msg = (const char *)lua_touserdata(L, 1);
+		// 
 		sz = luaL_checkinteger(L, 2);
 	} else {
+		// 认为是string？？
+		// 如果知道string和指针区别
 		size_t ssz;
 		msg = luaL_checklstring(L,1,&ssz);
 		sz = (int)ssz;

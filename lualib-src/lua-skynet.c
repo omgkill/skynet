@@ -158,13 +158,16 @@ _forward_pre(struct skynet_context *context, void *ud, int type, int session, ui
 static int
 lcallback(lua_State *L) {
 	struct skynet_context * context = lua_touserdata(L, lua_upvalueindex(1));
+	// 
 	int forward = lua_toboolean(L, 2);
 	luaL_checktype(L,1,LUA_TFUNCTION);
 	// 保留index为1的元素，其他的都删除
 	lua_settop(L,1);
 	// 创建新的userdata?? 为什么这个原始lua_state 栈
+	// 在index为2上，创建callback_context
 	struct callback_context * cb_ctx = (struct callback_context *)lua_newuserdatauv(L, sizeof(*cb_ctx), 2);
 	// 返回newthread 的 堆栈L
+	// index为3创建thread？
 	cb_ctx->L = lua_newthread(L);
 	// 放进入traceback
 	lua_pushcfunction(cb_ctx->L, traceback);
@@ -174,6 +177,8 @@ lcallback(lua_State *L) {
 	lua_setfield(L, LUA_REGISTRYINDEX, "callback_context");
 	lua_xmove(L, cb_ctx->L, 1);
 
+	//	context->cb = cb;
+	//  context->cb_ud = ud;
 	skynet_callback(context, cb_ctx, (forward)?(_forward_pre):(_cb_pre));
 	return 0;
 }

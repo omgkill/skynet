@@ -487,6 +487,7 @@ static int
 llisten(lua_State *L) {
 	const char * host = luaL_checkstring(L,1);
 	int port = luaL_checkinteger(L,2);
+	// 可能是空
 	int backlog = luaL_optinteger(L,3,BACKLOG);
 	struct skynet_context * ctx = lua_touserdata(L, lua_upvalueindex(1));
 	int id = skynet_socket_listen(ctx, host,port,backlog);

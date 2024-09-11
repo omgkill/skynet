@@ -45,11 +45,12 @@ function command.req(...)
 end
 
 function command.push(addr, msg, sz)
+	-- request 是 封装后的数据
+	-- new_session 下一个消息session
 	local request, new_session, padding = cluster.packpush(addr, session, msg, sz)
 	if padding then	-- is multi push
 		session = new_session
 	end
-
 	channel:request(request, nil, padding)
 end
 

@@ -12,6 +12,11 @@
 
 #define BACKLOG 128
 
+//参考文档：https://www.zybuluo.com/wsd1/note/283774
+// https://blog.codingnow.com/2014/04/skynet_gate_lua_version.html
+//
+
+
 struct connection {
 	int id;	// skynet_socket id
 	uint32_t agent;

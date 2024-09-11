@@ -2057,6 +2057,8 @@ do_listen(const char * host, int port, int backlog) {
 	return listen_fd;
 }
 
+// 这个 ss 是什么时候创建的
+// opaque 是 source handle
 int 
 socket_server_listen(struct socket_server *ss, uintptr_t opaque, const char * addr, int port, int backlog) {
 	int fd = do_listen(addr, port, backlog);

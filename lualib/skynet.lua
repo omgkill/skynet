@@ -224,6 +224,7 @@ do ---- request/select
 
 	local function request_thread(self)
 		while true do
+			-- 等待获取数据
 			local succ, msg, sz, session = coroutine_yield "SUSPEND"
 			if session == self._timeout then
 				self._timeout = nil
@@ -640,7 +641,7 @@ local starttime
 
 function skynet.starttime()
 	if not starttime then
-		starttime = c.("STARTTIME")
+		starttime = c.intcommand("STARTTIME")
 	end
 	return starttime
 end
@@ -942,6 +943,7 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 
 		local f = p.dispatch   	-- 获取消息处理函数，可以视为该类协议的消息回调函数
 		if f then
+			-- 目前这里是在哪呢。还没进入gate吧。应该还在socket线程
 			-- 如果协程池内有空闲的协程，则直接返回，否则创建一个新的协程，该协程用于执行该类协议的消息处理函数dispatch
 			local co = co_create(f)
 			session_coroutine_id[co] = session
@@ -982,6 +984,7 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 end
 
 function skynet.dispatch_message(...)
+	--
 	local succ, err = pcall(raw_dispatch_message,...)
 
 
@@ -1098,7 +1101,10 @@ function skynet.init_service(start)
 	end
 end
 
+-- 这个初始化过程
 function skynet.start(start_func)
+
+	-- 这个是什么
 	c.callback(skynet.dispatch_message)
 	init_thread = skynet.timeout(0, function()
 		skynet.init_service(start_func)

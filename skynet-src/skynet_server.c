@@ -283,16 +283,22 @@ dispatch_message(struct skynet_context *ctx, struct skynet_message *msg) {
 	assert(ctx->init);
 	CHECKCALLING_BEGIN(ctx)
 	pthread_setspecific(G_NODE.handle_key, (void *)(uintptr_t)(ctx->handle));
+	// 类型
 	int type = msg->sz >> MESSAGE_TYPE_SHIFT;
+	// 消息大小
 	size_t sz = msg->sz & MESSAGE_TYPE_MASK;
+	// 日志文件
 	FILE *f = (FILE *)ATOM_LOAD(&ctx->logfile);
 	if (f) {
 		skynet_log_output(f, msg->source, type, msg->session, msg->data, sz);
 	}
+	// 消息数量自增
 	++ctx->message_count;
 	int reserve_msg;
 	if (ctx->profile) {
 		ctx->cpu_start = skynet_thread_time();
+		// 回调？？
+		// 哪里处理判断消息类型，然后回调
 		reserve_msg = ctx->cb(ctx, ctx->cb_ud, type, msg->session, msg->source, msg->data, sz);
 		uint64_t cost_time = skynet_thread_time() - ctx->cpu_start;
 		ctx->cpu_cost += cost_time;
@@ -315,6 +321,7 @@ skynet_context_dispatchall(struct skynet_context * ctx) {
 	}
 }
 
+// 分发消息
 struct message_queue * 
 skynet_context_message_dispatch(struct skynet_monitor *sm, struct message_queue *q, int weight) {
 	if (q == NULL) {
@@ -322,9 +329,10 @@ skynet_context_message_dispatch(struct skynet_monitor *sm, struct message_queue 
 		if (q==NULL)
 			return NULL;
 	}
-	// 
+	// q是什么， q是子队列
+	// 一个子队列绑定一个handle？？
 	uint32_t handle = skynet_mq_handle(q);
-
+	// 获取到对应context
 	struct skynet_context * ctx = skynet_handle_grab(handle);
 	if (ctx == NULL) {
 		struct drop_t d = { handle };
@@ -343,11 +351,12 @@ skynet_context_message_dispatch(struct skynet_monitor *sm, struct message_queue 
 			n = skynet_mq_length(q);
 			n >>= weight;
 		}
+		// 预警
 		int overload = skynet_mq_overload(q);
 		if (overload) {
 			skynet_error(ctx, "May overload, message queue length = %d", overload);
 		}
-
+		// 处理一个消息，版本号增加
 		skynet_monitor_trigger(sm, msg.source , handle);
 
 		if (ctx->cb == NULL) {
