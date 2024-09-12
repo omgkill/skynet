@@ -77,6 +77,7 @@ _cb(
 	lua_pushinteger(L, session);
 	lua_pushinteger(L, source);
 
+	// 调用什么方法呢？？？  应该是skynet.dispatch_message
 	// 调用方法，5个入参，0个返回参数， trace： 如果是 0 ， 返回在栈顶的错误消息就和原始错误消息完全一致。 否则， msgh 就被当成是 错误处理函数 在栈上的索引位置
 	r = lua_pcall(L, 5, 0 , trace);
 
@@ -177,6 +178,7 @@ lcallback(lua_State *L) {
 	lua_setfield(L, LUA_REGISTRYINDEX, "callback_context");
 	lua_xmove(L, cb_ctx->L, 1);
 
+	//  struct skynet_context * context, void *ud, skynet_cb cb
 	//	context->cb = cb;
 	//  context->cb_ud = ud;
 	skynet_callback(context, cb_ctx, (forward)?(_forward_pre):(_cb_pre));

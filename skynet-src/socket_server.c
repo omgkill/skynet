@@ -1058,7 +1058,7 @@ send_socket(struct socket_server *ss, struct request_send * request, struct sock
 				return -1;
 			}
 			int n = sendto(s->fd, so.buffer, so.sz, 0, &sa.s, sasz);
-			if (n != so.sz) {
+			if (n != so.sz) 	{
 				append_sendbuffer_udp(ss,s,priority,request,udp_address);
 			} else {
 				stat_write(ss,s,n);
@@ -1295,7 +1295,7 @@ has_cmd(struct socket_server *ss) {
 	int retval;
 
 	FD_SET(ss->recvctrl_fd, &ss->rfds);
-
+	// retval -> 恢复值
 	retval = select(ss->recvctrl_fd+1, &ss->rfds, NULL, NULL, &tv);
 	if (retval == 1) {
 		return 1;
@@ -1404,6 +1404,8 @@ static int
 ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 	int fd = ss->recvctrl_fd;
 	// the length of message is one byte, so 256 buffer size is enough.
+	// 这个256是什么，是字节吗？？？？
+	// 无符号char，那就是一字节
 	uint8_t buffer[256];
 	uint8_t header[2];
 	block_readpipe(fd, header, sizeof(header));
@@ -1711,10 +1713,13 @@ clear_closed_event(struct socket_server *ss, struct socket_message * result, int
 int 
 socket_server_poll(struct socket_server *ss, struct socket_message * result, int * more) {
 	for (;;) {
+		// 是否有消息
 		if (ss->checkctrl) {
+			// 是否有指令？
 			if (has_cmd(ss)) {
 				int type = ctrl_cmd(ss, result);
 				if (type != -1) {
+					// 直接关了？
 					clear_closed_event(ss, result, type);
 					return type;
 				} else
@@ -2057,7 +2062,7 @@ do_listen(const char * host, int port, int backlog) {
 	return listen_fd;
 }
 
-// 这个 ss 是什么时候创建的
+// 这个 ss 是什么时候创建的 -> 一开始就创建了
 // opaque 是 source handle
 int 
 socket_server_listen(struct socket_server *ss, uintptr_t opaque, const char * addr, int port, int backlog) {

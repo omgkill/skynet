@@ -22,7 +22,7 @@ struct socket_server;
 
 struct socket_message {
 	int id;
-	uintptr_t opaque;
+	uintptr_t opaque; // 与本socket关联的服务地址，socket接收到的消息，最后将会传送到这个服务商
 	int ud;	// for accept, ud is new connection id ; for data, ud is size of data 
 	char * data;
 };

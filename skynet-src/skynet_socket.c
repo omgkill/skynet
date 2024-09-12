@@ -76,7 +76,7 @@ forward_message(int type, bool padding, struct socket_message * result) {
 }
 
 int 
-skynet_socket_poll() {
+ skynet_socket_poll() {
 	struct socket_server *ss = SOCKET_SERVER;
 	assert(ss);
 	struct socket_message result;
@@ -128,7 +128,9 @@ skynet_socket_sendbuffer_lowpriority(struct skynet_context *ctx, struct socket_s
 
 int 
 skynet_socket_listen(struct skynet_context *ctx, const char *host, int port, int backlog) {
+	// ctx->handle;
 	uint32_t source = skynet_context_handle(ctx);
+	
 	return socket_server_listen(SOCKET_SERVER, source, host, port, backlog);
 }
 

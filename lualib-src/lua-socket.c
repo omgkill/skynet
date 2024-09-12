@@ -101,6 +101,7 @@ lnewbuffer(lua_State *L) {
 	lpushbbuffer will get a free struct buffer_node from table pool, and then put the msg/size in it.
 	lpopbuffer return the struct buffer_node back to table pool (By calling return_free_node).
  */
+// s.buffer, s.pool, data, size
 static int
 lpushbuffer(lua_State *L) {
 	struct socket_buffer *sb = lua_touserdata(L,1);
@@ -114,7 +115,9 @@ lpushbuffer(lua_State *L) {
 	int pool_index = 2;
 	luaL_checktype(L,pool_index,LUA_TTABLE);
 	int sz = luaL_checkinteger(L,4);
+	// pool_index 是序号，值是table类型。 把bable[1] 的值压入栈
 	lua_rawgeti(L,pool_index,1);
+	// 获取栈顶数据
 	struct buffer_node * free_node = lua_touserdata(L,-1);	// sb poolt msg size free_node
 	lua_pop(L,1);
 	if (free_node == NULL) {

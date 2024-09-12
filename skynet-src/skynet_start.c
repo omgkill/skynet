@@ -179,6 +179,7 @@ thread_worker(void *p) {
 	return NULL;
 }
 
+// thread  线程数量
 static void
 start(int thread) {
 	pthread_t pid[thread+3];
@@ -254,6 +255,7 @@ bootstrap(struct skynet_context * logger, const char * cmdline) {
 	}
 }
 
+// 这在哪里调用
 void 
 skynet_start(struct skynet_config * config) {
 	// register SIGHUP for log file reopen
