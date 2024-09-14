@@ -266,13 +266,18 @@ static int luaB_cowrap (lua_State *L) {
 
 static int
 lstart(lua_State *L) {
+	// lua_gettop -> 返回栈顶元素的索引
 	if (lua_gettop(L) != 0) {
+		// 保留 index为1的元素
 		lua_settop(L,1);
+		// 检测 index为的元素是否为 LUA_TTHREAD
 		luaL_checktype(L, 1, LUA_TTHREAD);
 	} else {
+		// 把 L 表示的线程压栈。 如果这个线程是当前状态机的主线程的话，返回 1 。
 		lua_pushthread(L);
 	}
 	lua_Number start_time = 0;
+	//
 	if (timing_enable(L, 1, &start_time)) {
 		return luaL_error(L, "Thread %p start profile more than once", lua_topointer(L, 1));
 	}
@@ -289,6 +294,7 @@ lstart(lua_State *L) {
 	fprintf(stderr, "PROFILE [%p] start\n", L);
 #endif
 	lua_pushnumber(L, start_time);
+	// 类似于 lua_settable ， 但是是做一次直接赋值（不触发元方法）
 	lua_rawset(L, lua_upvalueindex(1));
 
 	return 0;
@@ -335,18 +341,26 @@ init_profile(lua_State *L) {
 		{ "wrap", luaB_cowrap },
 		{ NULL, NULL },
 	};
+	// 创建一张新的表，并预分配足够保存下数组 l 内容的空间（但不填充）。 这是给 luaL_setfuncs 一起用的 （参见 luaL_newlib）
+	// 它以宏形式实现， 数组 l 必须是一个数组，而不能是一个指针。
 	luaL_newlibtable(L,l);
 	lua_newtable(L);	// table thread->start time
 	lua_newtable(L);	// table thread->total time
 
 	lua_newtable(L);	// weak table
+	// 这个宏等价于 lua_pushstring， 区别仅在于只能在 s 是一个字面量时才能用它。 它会自动给出字符串的长度。
 	lua_pushliteral(L, "kv");
+	// 
 	lua_setfield(L, -2, "__mode");
-
+	// 把栈上给定索引处的元素作一个副本压栈。
 	lua_pushvalue(L, -1);
+	// 把一张表弹出栈，并将其设为给定索引处的值的元表。
 	lua_setmetatable(L, -3);
 	lua_setmetatable(L, -3);
 
+	// void luaL_setfuncs (lua_State *L, const luaL_Reg *l, int nup);
+	// 把数组 l 中的所有函数 （参见 luaL_Reg） 注册到栈顶的表中（该表在可选的上值之下，见下面的解说）。
+	// 若 nup 不为零， 所有的函数都共享 nup 个上值。 这些值必须在调用之前，压在表之上。 这些值在注册完毕后都会从栈弹出。
 	luaL_setfuncs(L,l,2);
 
 	return 1;
@@ -384,16 +398,44 @@ static int
 init_cb(struct snlua *l, struct skynet_context *ctx, const char * args, size_t sz) {
 	lua_State *L = l->L;
 	l->ctx = ctx;
+
+	//参考：https://cloudwu.github.io/lua53doc/manual.html#2.5
+
+	// 垃圾收集器间歇率 和 垃圾收集器步进倍率.这两个数字都使用百分数为单位 （例如：值 100 在内部表示 1 ）。
+	//垃圾收集器间歇率控制着收集器需要在开启新的循环前要等待多久。 增大这个值会减少收集器的积极性。 当这个值比 100 小的时候，收集器在开启新的循环前不会有等待。 设置这个值为 200 就会让收集器等到总内存使用量达到 之前的两倍时才开始新的循环。
+	//垃圾收集器步进倍率控制着收集器运作速度相对于内存分配速度的倍率。 增大这个值不仅会让收集器更加积极，还会增加每个增量步骤的长度。 不要把这个值设得小于 100 ， 那样的话收集器就工作的太慢了以至于永远都干不完一个循环。 默认值是 200 ，这表示收集器以内存分配的“两倍”速工作。
+	// int lua_gc (lua_State *L, int what, int data);
+	// 这个函数根据其参数 what 发起几种不同的任务：
+
+	// LUA_GCSTOP: 停止垃圾收集器。
+	// LUA_GCRESTART: 重启垃圾收集器。
+	// LUA_GCCOLLECT: 发起一次完整的垃圾收集循环。
+	// LUA_GCCOUNT: 返回 Lua 使用的内存总量（以 K 字节为单位）。
+	// LUA_GCCOUNTB: 返回当前内存使用量除以 1024 的余数。
+	// LUA_GCSTEP: 发起一步增量垃圾收集。
+	// LUA_GCSETPAUSE: 把 data 设为 垃圾收集器间歇率 （参见 §2.5），并返回之前设置的值。
+	// LUA_GCSETSTEPMUL: 把 data 设为 垃圾收集器步进倍率 （参见 §2.5），并返回之前设置的值。
+	// LUA_GCISRUNNING: 返回收集器是否在运行（即没有停止）。
 	lua_gc(L, LUA_GCSTOP, 0);
+	// 把 b 作为一个布尔量压栈。
 	lua_pushboolean(L, 1);  /* signal for libraries to ignore env. vars. */
+	// 和lua_pushboolean一起看。意思 table["LUA_NOENV"] = true. table 是LUA_REGISTRYINDEX 地址的值
 	lua_setfield(L, LUA_REGISTRYINDEX, "LUA_NOENV");
+	//打开指定状态机中的所有 Lua 标准库。
 	luaL_openlibs(L);
+	//void luaL_requiref (lua_State *L, const char *modname, lua_CFunction openf, int glb);
+	// 如果 modname 不在 package.loaded 中， 则调用函数 openf ，并传入字符串 modname。 将其返回值置入 package.loaded[modname]。 这个行为好似该函数通过 require 调用过一样。
 	luaL_requiref(L, "skynet.profile", init_profile, 0);
 
 	int profile_lib = lua_gettop(L);
 	// replace coroutine.resume / coroutine.wrap
 	lua_getglobal(L, "coroutine");
+	// int lua_getfield (lua_State *L, int index, const char *k);
+	// 把 t[k] 的值压栈， 这里的 t 是索引指向的值。 在 Lua 中，这个函数可能触发对应 "index" 事件对应的元方法 （参见 §2.4 ）。函数将返回压入值的类型。
 	lua_getfield(L, profile_lib, "resume");
+	// 	void lua_setfield (lua_State *L, int index, const char *k);
+	// 做一个等价于 t[k] = v 的操作， 这里 t 是给出的索引处的值， 而 v 是栈顶的那个值。
+	// 这个函数将把这个值弹出栈。 跟在 Lua 中一样，这个函数可能触发一个 "newindex" 事件的元方法 （参见 §2.4）
 	lua_setfield(L, -2, "resume");
 	lua_getfield(L, profile_lib, "wrap");
 	lua_setfield(L, -2, "wrap");
