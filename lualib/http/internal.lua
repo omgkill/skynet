@@ -174,12 +174,17 @@ function M.request(interface, method, host, url, recvheader, header, content)
 	local write = interface.write
 	local header_content = ""
 	if header then
-		if not header.Host then
-			header.Host = host
+		if type(header) == "table" then
+			if not header.Host then
+				header.Host = host
+			end
+			for k,v in pairs(header) do
+				header_content = string.format("%s%s:%s\r\n", header_content, k, v)
+			end
+		elseif type(header) == "string" then
+			header_content = header
 		end
-		for k,v in pairs(header) do
-			header_content = string.format("%s%s:%s\r\n", header_content, k, v)
-		end
+
 	else
 		header_content = string.format("host:%s\r\n",host)
 	end
