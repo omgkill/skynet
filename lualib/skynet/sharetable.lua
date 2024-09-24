@@ -219,14 +219,17 @@ end
 
 local RECORD = {}
 function sharetable.query(filename)
+    -- 获取指针？
 	local newptr = skynet.call(sharetable.address, "lua", "query", filename)
 	if newptr then
+        -- clone table
 		local t = core.clone(newptr)
 		local map = RECORD[filename]
 		if not map then
 			map = {}
 			RECORD[filename] = map
 		end
+        -- 这个t是 数据？？
 		map[t] = true
 		return t
 	end
@@ -263,6 +266,7 @@ local getinfo = debug.getinfo
 
 local NILOBJ = {}
 local function insert_replace(old_t, new_t, replace_map)
+    -- 如果old_t不是map呢
     for k, ov in pairs(old_t) do
         if type(ov) == "table" then
             local nv = new_t[k]
@@ -479,7 +483,9 @@ function sharetable.update(...)
 	for _, name in ipairs(names) do
 		local map = RECORD[name]
 		if map then
+            -- 新值
 			local new_t = sharetable.query(name)
+            -- old_t 是值。应该是个map
 			for old_t,_ in pairs(map) do
 				if old_t ~= new_t then
 					insert_replace(old_t, new_t, replace_map)
