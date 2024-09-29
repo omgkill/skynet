@@ -36,11 +36,27 @@
 --print(0xf)
 --
 --1111111111111111111111111111111
-
-local mm = "dddd"
-
-
-for k,v in pairs(mm) do
-    print(k,v)
-end
-
+--
+--local mm = "dddd"
+--
+--
+--for k,v in pairs(mm) do
+--    print(k,v)
+--end
+--
+--local ee = nil
+--local function mm()
+--    local dd = "3333"
+--    local a = "--"
+--
+--    print(dd)
+--    print(a)
+--end
+--
+--local t1 = debug.getinfo(mm, "uf")
+--
+--for k,v in pairs(t1) do
+--    print(k,v)
+--end
+local  l1, l2 = coroutine.running()
+print(l1)

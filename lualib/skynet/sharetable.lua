@@ -41,7 +41,10 @@ local function sharetable_service()
 	end
 
 	local function loadtable(filename, ptr, len)
+
 		close_matrix(files[filename])
+
+        -- 这是啥意思呢。 必须要放到c环境下去处理吗？？？？？
 		local m = core.matrix([[
 			local unpack, ptr, len = ...
 			return unpack(ptr, len)
@@ -267,43 +270,67 @@ local getinfo = debug.getinfo
 local NILOBJ = {}
 local function insert_replace(old_t, new_t, replace_map)
     -- 如果old_t不是map呢
+    -- 当是table，才进行替换
     for k, ov in pairs(old_t) do
+        -- 如果ov 不是table，就不走这个逻辑
         if type(ov) == "table" then
             local nv = new_t[k]
             if nv == nil then
                 nv = NILOBJ
             end
             assert(replace_map[ov] == nil)
+            -- 这一行是为确保上一行的执行吧？。不会递归？
             replace_map[ov] = nv
             nv = type(nv) == "table" and nv or NILOBJ
             insert_replace(ov, nv, replace_map)
         end
     end
+    --如果old_t 不是table， 只会走这里
+    --当然如果old_t是table，也会走这里
     replace_map[old_t] = new_t
     return replace_map
 end
 
 
+
+-- This function is designed to replace values within a given Lua table based on a provided replacement map (replace_map).
+-- It iterates through the table and its nested structures, recursively applying replacements as needed.
+
+-- 这段代码的主要目的是在Lua环境中提供一种灵活的数据替换机制，能够处理包括表、函数、userdata以及线程（协程）在内的多种数据类型。
+-- 通过replace_map，用户可以指定哪些值需要被替换为新的值，同时，它还能够处理这些值的元表以及函数的上值和局部变量。
+-- 这种机制在需要深度修改或替换Lua环境中数据结构的场景中非常有用。
+-- 定义一个函数，用于根据replace_map替换值
 local function resolve_replace(replace_map)
+    -- 初始化一个空表，用于存储类型对应的匹配函数
+    -- match: A table used to store functions for matching different value types (e.g., number, string, table).
     local match = {}
+    -- 初始化一个空表，用于记录已经处理过的值，防止循环引用
+    -- record_map: A table used to keep track of values that have already been processed to avoid infinite recursion.
     local record_map = {}
 
+    -- 辅助函数，用于从replace_map中获取替换后的值，处理NILOBJ特殊情况
+    -- Retrieves the replacement value for a given key from the replace_map.
+    -- Handles the case where the replacement value is NILOBJ, indicating that the value should be replaced with nil.
     local function getnv(v)
         local nv = replace_map[v]
         if nv then
-            if nv == NILOBJ then
+            if nv == NILOBJ then   -- 如果指定替换为NILOBJ，则返回nil
                 return nil
             end
             return nv
         end
-        assert(false)
+        assert(false)   -- 如果v在replace_map中没有找到且不是NILOBJ，则断言失败
     end
 
+    -- Checks if the value has already been processed or is a shared table (to avoid infinite recursion).
+    -- Retrieves the appropriate matching function based on the value's type and applies it.
+    -- 对值进行匹配和替换，如果是nil、已记录或共享表，则不处理
     local function match_value(v)
         if v == nil or record_map[v] or is_sharedtable(v) then
             return
         end
 
+        -- 根据值的类型调用相应的匹配函数
         local tv = type(v)
         local f = match[tv]
         if f then
@@ -311,8 +338,9 @@ local function resolve_replace(replace_map)
             return f(v)
         end
     end
-
+    -- 对值的元表进行匹配和替换
     local function match_mt(v)
+        -- 如果v的元表在replace_map中有替换项，则更新元表
         local mt = debug.getmetatable(v)
         if mt then
             local nv = replace_map[mt]
@@ -324,9 +352,14 @@ local function resolve_replace(replace_map)
             end
         end
     end
-
+    -- 对内部类型（如函数参数、布尔值等）的元表进行匹配
     local function match_internmt()
+        -- 这个应该是获取各个类型而已。值不重要？
         local internal_types = {
+            -- 返回指定函数第 n 个上值的唯一标识符（一个轻量用户数据）。
+            -- 这个唯一标识符可以让程序检查两个不同的闭包是否共享了上值。 若 Lua 闭包之间共享的是同一个上值 （即指向一个外部局部变量），会返回相同的标识符。
+            -- _ENV 被 _ENV 用于值的那张表被称为 环境。
+            -- 当 Lua 加载一个代码块，_ENV 这个上值的默认值就是这个全局环境
             pointer = debug.upvalueid(getnv, 1),
             boolean = false,
             str = "",
@@ -334,15 +367,19 @@ local function resolve_replace(replace_map)
             thread = coroutine.running(),
             func = getnv,
         }
+        -- 遍历一系列内部类型并尝试匹配其元表
         for _,v in pairs(internal_types) do
             match_mt(v)
         end
         return match_mt(nil)
     end
 
-
+    -- 对表进行遍历，替换其中的键和值，并处理元表
     local function match_table(t)
         local keys = false
+
+        -- 对表的每个键值对进行处理，如果键或值在replace_map中有替换项，则更新
+
         for k,v in next, t do
             local tk = type(k)
             if match[tk] then
@@ -376,20 +413,23 @@ local function resolve_replace(replace_map)
         end
         return match_mt(t)
     end
-
+    -- 对userdata类型的值进行处理，主要是替换其用户值（uservalue）和元表
     local function match_userdata(u)
         local uv = getuservalue(u)
         local nv = replace_map[uv]
+        -- 如果userdata的用户值在replace_map中有替换项，则更新用户值
         if nv then
             nv = getnv(uv)
             setuservalue(u, nv)
         end
         return match_mt(u)
     end
-
+    -- 对函数信息进行处理，包括其上值（upvalue）和局部变量（local variable）
     local function match_funcinfo(info)
         local func = info.func
         local nups = info.nups
+
+        -- 遍历函数的每个上值和局部变量，进行替换
         for i=1,nups do
             local name, upv = getupvalue(func, i)
             local nv = replace_map[upv]
@@ -421,12 +461,12 @@ local function resolve_replace(replace_map)
             i = i + 1
         end
     end
-
+    -- 对函数进行处理，实际上是调用match_funcinfo
     local function match_function(f)
         local info = getinfo(f, "uf")
         return match_funcinfo(info)
     end
-
+    -- 对线程（协程）的栈值和函数信息进行匹配处理
     local function match_thread(co, level)
         -- match stackvalues
         local values = {}
@@ -438,6 +478,7 @@ local function resolve_replace(replace_map)
 
         local uplevel = co == coroutine.running() and 1 or 0
         level = level or 1
+        -- 遍历线程的栈值和函数信息，进行替换
         while true do
             local info = getinfo(co, level, "uf")
             if not info then
@@ -449,8 +490,11 @@ local function resolve_replace(replace_map)
             level = level + 1
         end
     end
-
+    -- 初始化匹配过程，记录一些特殊的值，并忽略部分栈帧
     local function prepare_match()
+
+        -- 主要是防止对特定值和函数进行重复处理
+
         local co = coroutine.running()
         record_map[co] = true
         record_map[match] = true
@@ -463,20 +507,35 @@ local function resolve_replace(replace_map)
         match_thread(co, 5) -- ignore match_thread and match_funcinfo frame
     end
 
+    -- 设置match表，使其包含对不同类型值的匹配函数
     match["table"] = match_table
     match["function"] = match_function
     match["userdata"] = match_userdata
     match["thread"] = match_thread
 
+    -- 调用prepare_match进行初始化，并对内部类型的元表进行匹配
     prepare_match()
     match_internmt()
 
+    -- 最后，对Lua注册表（全局环境）进行匹配处理
+    --Lua 提供了一个 注册表， 这是一个预定义出来的表， 可以用来保存任何 C 代码想保存的 Lua 值。 这个表可以用有效伪索引 LUA_REGISTRYINDEX 来定位。 任何 C 库都可以在这张表里保存数据， 为了防止冲突，你需要特别小心的选择键名。 一般的用法是，你可以用一个包含你的库名的字符串做为键名， 或者取你自己 C 对象的地址，以轻量用户数据的形式做键， 还可以用你的代码创建出来的任意 Lua 对象做键。 关于变量名，字符串键名中以下划线加大写字母的名字被 Lua 保留。
+    --
+    --注册表中的整数键用于引用机制 （参见 luaL_ref）， 以及一些预定义的值。 因此，整数键不要用于别的目的。
+    --
+    --当你创建了一个新的 Lua 状态机， 其中的注册表内就预定义好了几个值。 这些预定义值可以用整数索引到， 这些整数以常数形式定义在 lua.h 中。 有下列常数：
+    --
+    --LUA_RIDX_MAINTHREAD: 注册表中这个索引下是状态机的主线程。 （主线程和状态机同时被创建出来。）
+    --LUA_RIDX_GLOBALS: 注册表的这个索引下是全局环境。
     local root = debug.getregistry()
-    assert(replace_map[root] == nil)
+    assert(replace_map[root] == nil)    -- 确保replace_map中没有对注册表的替换项
+
+    -- 接下来的代码被截断了，但预期是对root进行match_table处理
     match_table(root)
 end
 
-
+-- 为什么update搞得这么费劲。目的是什么
+-- 我们之前的配置更新是怎么处理呢
+-- 就是直接替换索引。 那之前的配置被本地引用了。那是特殊情况或代码实现问题
 function sharetable.update(...)
 	local names = {...}
 	local replace_map = {}
@@ -488,7 +547,9 @@ function sharetable.update(...)
             -- old_t 是值。应该是个map
 			for old_t,_ in pairs(map) do
 				if old_t ~= new_t then
+                    -- 先做映射关系，old_v 映射到new_v
 					insert_replace(old_t, new_t, replace_map)
+                    -- 这更新过程中有获取呢？？
                     map[old_t] = nil
 				end
 			end

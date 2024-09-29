@@ -8,6 +8,9 @@ skynet.init(function()
 end)
 
 local sharedata = {}
+--  一张表的元表中的 __mode 域控制着这张表的弱属性。
+-- 当 __mode 域是一个包含字符 'k' 的字符串时，这张表的所有键皆为弱引用。
+-- 当 __mode 域是一个包含字符 'v' 的字符串时，这张表的所有值皆为弱引用。
 local cache = setmetatable({}, { __mode = "kv" })
 
 local function monitor(name, obj, cobj)

@@ -190,53 +190,71 @@ load_matrixfile(lua_State *L) {
 	return 1;
 }
 
+// 定义一个静态函数，用于从Lua文件中加载矩阵数据
 static int
 matrix_from_file(lua_State *L) {
+    // new 一个state ??
+	// 创建一个新的Lua状态机，用于执行从文件中加载的代码
 	lua_State *mL = luaL_newstate();
+	// 如果创建失败，则返回错误
 	if (mL == NULL) {
-		return luaL_error(L, "luaL_newstate failed");
+		return luaL_error(L, "luaL_newstate failed"); // 创建一个新的Lua状态机失败
 	}
+	// 字符串；是一段可执行代码
+	// 从Lua栈中获取第一个参数（字符串），假设它是Lua源代码
 	const char * source = luaL_checkstring(L, 1);
+	// 获取当前Lua栈的顶部索引
 	int top = lua_gettop(L);
+	// push  function
+	// 在新的Lua状态机mL中压入一个C函数（load_matrixfile），这个函数应该负责加载矩阵文件
 	lua_pushcfunction(mL, load_matrixfile);
+	// push lua string(function string)
 	lua_pushlightuserdata(mL, (void *)source);
+
+	// 如果原始Lua状态机L的栈中有额外的参数，将它们也复制到mL中
 	if (top > 1) {
+		// 检查mL的栈空间是否足够
 		if (!lua_checkstack(mL, top + 1)) {
-			return luaL_error(L, "Too many argument %d", top);
+			return luaL_error(L, "Too many argument %d", top);	// 参数过多，栈空间不足
 		}
+		// 遍历L中的额外参数，并将它们复制到mL中
 		int i;
 		for (i=2;i<=top;i++) {
 			switch(lua_type(L, i)) {
 			case LUA_TBOOLEAN:
-				lua_pushboolean(mL, lua_toboolean(L, i));
+				lua_pushboolean(mL, lua_toboolean(L, i));	// 布尔值
 				break;
 			case LUA_TNUMBER:
 				if (lua_isinteger(L, i)) {
-					lua_pushinteger(mL, lua_tointeger(L, i));
+					lua_pushinteger(mL, lua_tointeger(L, i));	// 整数
 				} else {
-					lua_pushnumber(mL, lua_tonumber(L, i));
+					lua_pushnumber(mL, lua_tonumber(L, i));		// 浮点数
 				}
 				break;
 			case LUA_TLIGHTUSERDATA:
-				lua_pushlightuserdata(mL, lua_touserdata(L, i));
+				lua_pushlightuserdata(mL, lua_touserdata(L, i));	// light userdata
 				break;
 			case LUA_TFUNCTION:
+				// 只支持无闭包的轻量级C函数
 				if (lua_iscfunction(L, i) && lua_getupvalue(L, i, 1) == NULL) {
 					lua_pushcfunction(mL, lua_tocfunction(L, i));
 					break;
 				}
-				return luaL_argerror(L, i, "Only support light C function");
+				return luaL_argerror(L, i, "Only support light C function"); // 仅支持轻量级C函数
 			default:
-				return luaL_argerror(L, i, "Type invalid");
+				return luaL_argerror(L, i, "Type invalid");	// 无效的参数类型
 			}
 		}
 	}
+	// 调用mL栈中的函数和参数，执行加载矩阵文件的操作
 	int ok = lua_pcall(mL, top, 1, 0);
+	// 如果执行失败，则将错误信息推送到原始Lua状态机L，并关闭mL
 	if (ok != LUA_OK) {
-		lua_pushstring(L, lua_tostring(mL, -1));
-		lua_close(mL);
-		lua_error(L);
+		lua_pushstring(L, lua_tostring(mL, -1));	// 获取错误消息
+		lua_close(mL);	// 关闭mL
+		lua_error(L);	// 在L中引发错误
 	}
+	// 假设box_state是一个自定义函数，用于将mL的状态封装并压入L的栈中
 	return box_state(L, mL);
 }
 
