@@ -645,6 +645,14 @@ function skynet.time()
 end
 
 function skynet.exit()
+
+	local filelog = require "log.filelog"
+	filelog.sys_error("exit------", debug.traceback())
+
+	print("----------------exit")
+	print(debug.traceback())
+
+
 	fork_queue = { h = 1, t = 0 }	-- no fork coroutine can be execute after skynet.exit
 	skynet.send(".launcher","lua","REMOVE",skynet.self(), false)
 	-- report the sources that call me
