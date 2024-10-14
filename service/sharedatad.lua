@@ -10,8 +10,11 @@ local pool_count = {}
 local objmap = {}
 local collect_tick = 10
 
+-- 为什么newobj 呢
+-- 这个处理主要为了什么
 local function newobj(name, tbl)
 	assert(pool[name] == nil)
+	--
 	local cobj = sharedata.host.new(tbl)
 	sharedata.host.incref(cobj)
 	local v = {obj = cobj, watch = {} }
