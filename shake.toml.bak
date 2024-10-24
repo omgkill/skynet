@@ -1,0 +1,137 @@
+#[sync_reader]
+#cluster = false            # set to true if source is a redis cluster
+#address = "redis.ind-game-test.svc.cluster.local:6379" # when cluster is true, set address to one of the cluster #node
+#username = ""              # keep empty if not using ACL
+#password = ""              # keep empty if no authentication is required
+#tls = false                #
+#sync_rdb = true            # set to false if you don't want to sync rdb
+#sync_aof = true            # set to false if you don't want to sync aof
+#prefer_replica = false     # set to true if you want to sync from replica node
+#try_diskless = false       # set to true if you want to sync by socket and source repl-diskless-sync=yes
+
+#[scan_reader]
+#cluster = false            # set to true if source is a redis cluster
+#address = "127.0.0.1:6379" # when cluster is true, set address to one of the cluster node
+#username = ""              # keep empty if not using ACL
+#password = ""              # keep empty if no authentication is required
+#tls = false
+#dbs = []                   # set you want to scan dbs such as [1,5,7], if you don't want to scan all
+#scan = true                # set to false if you don't want to scan keys
+#ksn = false                # set to true to enabled Redis keyspace notifications (KSN) subscription
+#count = 1                  # number of keys to scan per iteration
+
+[rdb_reader]
+filepath = "/home/redisShake/dutaqjiadctqg8jc.rdb"
+
+# [aof_reader]
+# filepath = "/tmp/.aof"
+# timestamp = 0            # subsecond
+
+[redis_writer]
+cluster = false            # set to true if target is a redis cluster
+sentinel = false           # set to true if target is a redis sentinel
+master = ""                # set to master name if target is a redis sentinel
+address = "uat-rw.x7rlam.ng.0001.aps1.cache.amazonaws.com:6379" # when cluster is true, set address to one of the cluster node
+username = ""              # keep empty if not using ACL
+password = ""              # keep empty if no authentication is required
+tls = false
+off_reply = false          # turn off the server reply
+
+[filter]
+# Allow keys with specific prefixes or suffixes
+# Examples:
+#   allow_key_prefix = ["user:", "product:"]
+#   allow_key_suffix = [":active", ":valid"]
+# Leave empty to allow all keys
+allow_key_prefix = []
+allow_key_suffix = []
+
+# Block keys with specific prefixes or suffixes
+# Examples:
+#   block_key_prefix = ["temp:", "cache:"]
+#   block_key_suffix = [":tmp", ":old"]
+# Leave empty to block nothing
+block_key_prefix = []
+block_key_suffix = []
+
+# Specify allowed and blocked database numbers (e.g., allow_db = [0, 1, 2], block_db = [3, 4, 5])
+# Leave empty to allow all databases
+allow_db = []
+block_db = []
+
+# Allow or block specific commands
+# Examples:
+#   allow_command = ["GET", "SET"]  # Only allow GET and SET commands
+#   block_command = ["DEL", "FLUSHDB"]  # Block DEL and FLUSHDB commands
+# Leave empty to allow all commands
+allow_command = []
+block_command = []
+
+# Allow or block specific command groups
+# Available groups:
+#   SERVER, STRING, CLUSTER, CONNECTION, BITMAP, LIST, SORTED_SET,
+#   GENERIC, TRANSACTIONS, SCRIPTING, TAIRHASH, TAIRSTRING, TAIRZSET,
+#   GEO, HASH, HYPERLOGLOG, PUBSUB, SET, SENTINEL, STREAM
+# Examples:
+#   allow_command_group = ["STRING", "HASH"]  # Only allow STRING and HASH commands
+#   block_command_group = ["SCRIPTING", "PUBSUB"]  # Block SCRIPTING and PUBSUB commands
+# Leave empty to allow all command groups
+allow_command_group = []
+block_command_group = []
+
+# Function for custom data processing
+# For best practices and examples, visit:
+# https://tair-opensource.github.io/RedisShake/zh/function/best_practices.html
+function = ""
+
+[advanced]
+dir = "data"
+ncpu = 0        # runtime.GOMAXPROCS, 0 means use runtime.NumCPU() cpu cores
+pprof_port = 0  # pprof port, 0 means disable
+status_port = 0 # status port, 0 means disable
+
+# log
+log_file = "shake.log"
+log_level = "info"     # debug, info or warn
+log_interval = 5       # in seconds
+
+# redis-shake gets key and value from rdb file, and uses RESTORE command to
+# create the key in target redis. Redis RESTORE will return a "Target key name
+# is busy" error when key already exists. You can use this configuration item
+# to change the default behavior of restore:
+# panic:   redis-shake will stop when meet "Target key name is busy" error.
+# rewrite: redis-shake will replace the key with new value.
+# skip:  redis-shake will skip restore the key when meet "Target key name is busy" error.
+rdb_restore_command_behavior = "panic" # panic, rewrite or skip
+
+# redis-shake uses pipeline to improve sending performance.
+# Adjust this value based on the destination Redis performance:
+# - Higher values may improve performance for capable destinations.
+# - Lower values are recommended for destinations with poor performance.
+# 1024 is a good default value for most cases.
+pipeline_count_limit = 1024
+
+# This setting corresponds to the 'client-query-buffer-limit' in Redis configuration.
+# The default value is typically 1GB.
+# It's recommended not to modify this value unless absolutely necessary.
+target_redis_client_max_querybuf_len = 1073741824  # 1GB in bytes
+
+# This setting corresponds to the 'proto-max-bulk-len' in Redis configuration.
+# It defines the maximum size of a single string element in the Redis protocol.
+# The value must be 1MB or greater. Default is 512MB.
+# It's recommended not to modify this value unless absolutely necessary.
+target_redis_proto_max_bulk_len = 512_000_000
+
+# If the source is Elasticache, you can set this item. AWS ElastiCache has custom
+# psync command, which can be obtained through a ticket.
+aws_psync = "" # example: aws_psync = "10.0.0.1:6379@nmfu2sl5osync,10.0.0.1:6379@xhma21xfkssync"
+
+# destination will delete itself entire database before fetching files
+# from source during full synchronization.
+# This option is similar redis replicas RDB diskless load option:
+#   repl-diskless-load on-empty-db
+empty_db_before_sync = false
+
+[module]
+# The data format for BF.LOADCHUNK is not compatible in different versions. v2.6.3 <=> 20603
+target_mbbloom_version = 20603
